@@ -343,7 +343,7 @@ function reportCost(model, tokens) {
   const outputCost = (tokens.output / 1000000) * pricing.output;
   const totalCost = inputCost + outputCost;
 
-  core.info("=== AI Review Cost Summary ===");
+  core.info("=== Bad Buggy Cost Summary ===");
   core.info(`Model: ${model}`);
   core.info(`Input tokens: ${tokens.input.toLocaleString()}`);
   core.info(`Output tokens: ${tokens.output.toLocaleString()}`);

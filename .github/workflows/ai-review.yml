@@ -1,19 +1,26 @@
-name: AI Code Review
+name: bad-buggy self-review
+
 on:
   pull_request:
     types: [opened, synchronize]
 
 jobs:
-  review:
+  self-review:
     runs-on: ubuntu-latest
+
+    # Only run on PRs to this repo (not forks)
+    if: github.event.pull_request.head.repo.full_name == github.repository
+
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
-      - name: AI Review
+      - name: bad-buggy reviews itself
         uses: gundurraga/bad-buggy@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          ai-provider: "anthropic" # or 'openrouter'
-          api-key: ${{ secrets.ANTHROPIC_API_KEY }} # or OPENROUTER_API_KEY
+          ai-provider: "anthropic"
+          api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          model: "claude-sonnet-4-20250514"

@@ -40,14 +40,25 @@ jobs:
           model: "claude-3-haiku-20240307" # or claude-3-5-sonnet-20240620
 ```
 
-### 2. Set up your API key
+### 2. Configure repository permissions
+
+Go to your repository's **Settings → Actions → General**:
+
+1. Scroll down to **"Workflow permissions"**
+2. Select **"Read and write permissions"**
+3. Check **"Allow GitHub Actions to create and approve pull requests"**
+4. Click **Save**
+
+_This allows bad-buggy to post review comments on your pull requests._
+
+### 3. Set up your API key
 
 Go to your repository's Settings → Secrets and variables → Actions, and add:
 
 - For Anthropic: `ANTHROPIC_API_KEY`
 - For OpenRouter: `OPENROUTER_API_KEY`
 
-### 3. (Optional) Customize the review
+### 4. (Optional) Customize the review
 
 Create `.github/ai-review-config.yml`:
 
@@ -208,6 +219,30 @@ Example summary comment:
 - API keys are stored as GitHub secrets and never exposed
 - Reviews are posted as comments on your PRs
 - No data is stored or logged by this action
+
+## Troubleshooting
+
+### "Resource not accessible by integration" error
+
+If you see this error in your workflow logs:
+
+```
+Error: Failed to post review: Resource not accessible by integration
+Error: Failed to post comment: Resource not accessible by integration
+```
+
+**Solution:** Your repository needs proper permissions:
+
+1. Go to **Settings → Actions → General**
+2. Under **"Workflow permissions"**, select **"Read and write permissions"**
+3. Check **"Allow GitHub Actions to create and approve pull requests"**
+4. Click **Save**
+
+### Workflow triggers but no comments appear
+
+- Check that you've added the required API key secret (`ANTHROPIC_API_KEY` or `OPENROUTER_API_KEY`)
+- Verify the model name is correct in your workflow file
+- Ensure the workflow permissions are set correctly (see above)
 
 ## Contributing
 

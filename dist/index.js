@@ -38607,9 +38607,7 @@ const fs = __nccwpck_require__(7147);
 const DEFAULT_CONFIG = {
   review_prompt: `ENHANCED CODE REVIEW PROMPT: Critical Analysis & Developer Assessment
 
-CONTEXT: Today is ${
-    new Date().toISOString().split("T")[0]
-  }. Review with current best practices in mind.
+CONTEXT: Today is {{DATE}}. Review with current best practices in mind.
 
 MANDATORY FIRST STEP - IDENTIFY MOST CRITICAL ISSUE:
 Priority 1: Functional failures (broken core functionality, data corruption risks, critical security vulnerabilities, memory leaks)
@@ -38789,12 +38787,16 @@ function chunkDiff(diff, config) {
 }
 
 async function reviewChunk(chunk, config, provider, apiKey) {
-  const prompt = `${config.review_prompt}
+  const prompt = `${config.review_prompt.replace(
+    "{{DATE}}",
+    new Date().toISOString().split("T")[0]
+  )}
 
 Please review the following code changes and provide feedback as a JSON array of comments.
 Each comment should have:
 - file: the filename
 - line: the line number (from the diff)
+- end_line: (optional) the end line for multi-line comments
 - severity: "critical", "major", "minor", or "suggestion"
 - category: one of ${config.review_aspects.join(", ")}
 - comment: your feedback
@@ -38812,7 +38814,8 @@ Examples of correct JSON responses (only for CRITICAL issues):
   {
     "file": "src/payment.js", 
     "line": 78,
-    "severity": "critical",
+    "end_line": 85,
+    "severity": "critical", 
     "category": "bugs",
     "comment": "CRITICAL: Race condition in payment processing. Multiple concurrent transactions can cause double-charging. IMPACT: Financial loss, customer complaints. IMMEDIATE ACTION: Add transaction locking or atomic operations."
   }
@@ -38824,7 +38827,7 @@ ${chunk}
 Respond with ONLY a JSON array, no other text. Do not include explanations, thinking, or any text outside the JSON array. Start your response with [ and end with ].`;
 
   let response;
-  let inputTokens = Math.ceil(prompt.length / 4); // rough estimate
+  let inputTokens = Math.ceil(prompt.length / 3.5); // improved estimate for better accuracy
   let outputTokens = 0;
 
   if (provider === "anthropic") {
@@ -38835,7 +38838,7 @@ Respond with ONLY a JSON array, no other text. Do not include explanations, thin
     throw new Error(`Unknown provider: ${provider}`);
   }
 
-  outputTokens = Math.ceil(response.length / 4); // rough estimate
+  outputTokens = Math.ceil(response.length / 3.5); // improved estimate for better accuracy
 
   // Parse response
   let comments = [];
@@ -38865,6 +38868,10 @@ Respond with ONLY a JSON array, no other text. Do not include explanations, thin
 }
 
 async function callAnthropic(prompt, model, apiKey) {
+  if (!apiKey) {
+    throw new Error("Anthropic API key is required");
+  }
+
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -38888,6 +38895,10 @@ async function callAnthropic(prompt, model, apiKey) {
 }
 
 async function callOpenRouter(prompt, model, apiKey) {
+  if (!apiKey) {
+    throw new Error("OpenRouter API key is required");
+  }
+
   const response = await fetch(
     "https://openrouter.ai/api/v1/chat/completions",
     {
@@ -38964,11 +38975,18 @@ async function postReview(octokit, context, pr, comments, model, totalTokens) {
     pull_number: pr.number,
     event: "COMMENT",
     body: reviewBody,
-    comments: comments.map((c) => ({
-      path: c.file,
-      line: c.line || 1,
-      body: `**${c.severity}** (${c.category}): ${c.comment}`,
-    })),
+    comments: comments.map((c) => {
+      const comment = {
+        path: c.file,
+        line: c.line || 1,
+        body: `**${c.severity}** (${c.category}): ${c.comment}`,
+      };
+      if (c.end_line && c.end_line > c.line) {
+        comment.start_line = c.line;
+        comment.line = c.end_line;
+      }
+      return comment;
+    }),
   };
 
   try {
@@ -38983,7 +39001,9 @@ async function postReview(octokit, context, pr, comments, model, totalTokens) {
           owner: context.repo.owner,
           repo: context.repo.repo,
           issue_number: pr.number,
-          body: `**${comment.file}**: ${comment.comment}`,
+          body: `**${comment.file}:${comment.line}${
+            comment.end_line ? `-${comment.end_line}` : ""
+          }**: ${comment.comment}`,
         });
       } catch (e) {
         core.error(`Failed to post comment: ${e.message}`);

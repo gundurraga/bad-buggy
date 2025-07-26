@@ -1,0 +1,19 @@
+name: AI Code Review
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: AI Review
+        uses: gundurraga/bad-buggy@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          ai-provider: "anthropic" # or 'openrouter'
+          api-key: ${{ secrets.ANTHROPIC_API_KEY }} # or OPENROUTER_API_KEY

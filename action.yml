@@ -1,0 +1,33 @@
+name: "bad-buggy"
+description: "AI-powered pull request reviews with cost tracking"
+author: "gundurraga"
+
+branding:
+  icon: "eye"
+  color: "blue"
+
+inputs:
+  github-token:
+    description: "GitHub token for API access"
+    required: true
+
+  ai-provider:
+    description: "AI provider to use (anthropic or openrouter)"
+    required: true
+
+  api-key:
+    description: "API key for the AI provider"
+    required: true
+
+  model:
+    description: "AI model to use (e.g., claude-opus-4-20250514 (anthropic), qwen/qwen3-coder (openrouter))"
+    required: true
+
+  config-file:
+    description: "Path to configuration file"
+    required: false
+    default: ".github/ai-review-config.yml"
+
+runs:
+  using: "node20"
+  main: "dist/index.js"

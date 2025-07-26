@@ -1,0 +1,32 @@
+# bad-buggy reviews itself! 🐰
+
+review_prompt: |
+  You are reviewing bad-buggy - an AI code review GitHub Action.
+  This is meta: an AI reviewer reviewing an AI reviewer!
+
+  Focus on:
+  - JavaScript best practices and potential bugs
+  - GitHub Action specific issues
+  - Security concerns (especially API key handling)
+  - Error handling and edge cases
+  - Code clarity and maintainability
+
+  Be helpful but also have fun with the inception aspect!
+
+max_comments: 8
+prioritize_by_severity: true
+
+review_aspects:
+  - bugs
+  - security_vulnerabilities
+  - error_handling
+  - code_quality
+  - github_action_best_practices
+
+# Don't review these files
+ignore_patterns:
+  - "*.md"
+  - "package-lock.json"
+  - "dist/*"
+  - "LICENSE"
+  - ".gitignore"

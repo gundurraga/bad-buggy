@@ -36660,434 +36660,6 @@ function wrappy (fn, cb) {
 
 /***/ }),
 
-/***/ 260:
-/***/ ((module) => {
-
-class CommentProcessor {
-  constructor(config) {
-    this.config = config;
-  }
-
-  process(comments) {
-    // Remove duplicates
-    const unique = this._removeDuplicates(comments);
-
-    // Sort by severity if needed
-    const sorted = this._sortBySeverity(unique);
-
-    // Limit number of comments
-    return sorted.slice(0, this.config.max_comments);
-  }
-
-  _removeDuplicates(comments) {
-    return comments.filter(
-      (comment, index, self) =>
-        index ===
-        self.findIndex(
-          (c) => c.file === comment.file && c.line === comment.line
-        )
-    );
-  }
-
-  _sortBySeverity(comments) {
-    if (!this.config.prioritize_by_severity) {
-      return comments;
-    }
-
-    const severityOrder = {
-      critical: 0,
-      major: 1,
-      minor: 2,
-      suggestion: 3,
-    };
-
-    return comments.sort(
-      (a, b) => severityOrder[a.severity] - severityOrder[b.severity]
-    );
-  }
-
-  chunkDiff(diff) {
-    // For now, return the whole diff as one chunk
-    // TODO: Implement intelligent chunking for large diffs
-    return [diff];
-  }
-}
-
-module.exports = { CommentProcessor };
-
-
-/***/ }),
-
-/***/ 8446:
-/***/ ((module) => {
-
-// Model pricing (per 1M tokens)
-const MODEL_PRICING = {
-  "claude-4": { input: 3.0, output: 15.0 },
-  "claude-4-opus": { input: 15.0, output: 75.0 },
-  "claude-4-sonnet": { input: 3.0, output: 15.0 },
-  "claude-sonnet-4-20250514": { input: 3.0, output: 15.0 },
-  "claude-3-5-sonnet-20241022": { input: 3.0, output: 15.0 },
-  "claude-3-haiku-20240307": { input: 0.25, output: 1.25 },
-};
-
-class CostCalculator {
-  constructor(model) {
-    this.model = model;
-    this.pricing = MODEL_PRICING[model] || MODEL_PRICING["claude-4"];
-  }
-
-  calculate(tokens) {
-    const inputCost = (tokens.input / 1000000) * this.pricing.input;
-    const outputCost = (tokens.output / 1000000) * this.pricing.output;
-    const totalCost = inputCost + outputCost;
-
-    return {
-      inputCost,
-      outputCost,
-      totalCost,
-      model: this.model,
-      tokens,
-    };
-  }
-
-  formatCostSummary(tokens) {
-    const cost = this.calculate(tokens);
-    return {
-      summary: `**Review Cost:**
-- Model: ${cost.model}
-- Total cost: $${cost.totalCost.toFixed(4)}
-- Tokens: ${cost.tokens.input.toLocaleString()} input, ${cost.tokens.output.toLocaleString()} output`,
-
-      logSummary: [
-        "=== Bad-Buggy Cost Summary ===",
-        `Model: ${cost.model}`,
-        `Input tokens: ${cost.tokens.input.toLocaleString()}`,
-        `Output tokens: ${cost.tokens.output.toLocaleString()}`,
-        `Total cost: $${cost.totalCost.toFixed(4)}`,
-        "============================",
-      ].join("\n"),
-    };
-  }
-}
-
-module.exports = { CostCalculator, MODEL_PRICING };
-
-
-/***/ }),
-
-/***/ 7285:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-const core = __nccwpck_require__(2186);
-
-class AIProvider {
-  constructor(provider, apiKey) {
-    this.provider = provider;
-    this.apiKey = apiKey;
-  }
-
-  async reviewChunk(chunk, config) {
-    const prompt = this._buildPrompt(chunk, config);
-
-    let response;
-    let inputTokens = Math.ceil(prompt.length / 4); // rough estimate
-    let outputTokens = 0;
-
-    if (this.provider === "anthropic") {
-      response = await this._callAnthropic(prompt, config.model);
-    } else if (this.provider === "openrouter") {
-      response = await this._callOpenRouter(prompt, config.model);
-    } else {
-      throw new Error(`Unknown provider: ${this.provider}`);
-    }
-
-    outputTokens = Math.ceil(response.length / 4); // rough estimate
-
-    // Parse response
-    const comments = this._parseResponse(response);
-
-    return { comments, inputTokens, outputTokens };
-  }
-
-  _buildPrompt(chunk, config) {
-    return `${config.review_prompt}
-
-Please review the following code changes and provide feedback as a JSON array of comments.
-Each comment should have:
-- file: the filename
-- line: the line number (from the diff)
-- severity: "critical", "major", "minor", or "suggestion"
-- category: one of ${config.review_aspects.join(", ")}
-- comment: your feedback
-
-Examples of correct JSON responses (only for CRITICAL issues):
-
-[
-  {
-    "file": "src/auth.js",
-    "line": 45,
-    "severity": "critical",
-    "category": "security_vulnerabilities",
-    "comment": "CRITICAL: SQL injection vulnerability. User input 'userInput' is directly concatenated into query without sanitization. IMPACT: Database compromise, data theft. IMMEDIATE ACTION: Use parameterized queries or ORM methods."
-  },
-  {
-    "file": "src/payment.js", 
-    "line": 78,
-    "severity": "critical",
-    "category": "bugs",
-    "comment": "CRITICAL: Race condition in payment processing. Multiple concurrent transactions can cause double-charging. IMPACT: Financial loss, customer complaints. IMMEDIATE ACTION: Add transaction locking or atomic operations."
-  }
-]
-
-Code changes:
-${chunk}
-
-Respond with ONLY a JSON array, no other text. Do not include explanations, thinking, or any text outside the JSON array. Start your response with [ and end with ].`;
-  }
-
-  async _callAnthropic(prompt, model) {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": this.apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: model,
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: 4000,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Anthropic API error: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    return data.content[0].text;
-  }
-
-  async _callOpenRouter(prompt, model) {
-    const response = await fetch(
-      "https://openrouter.ai/api/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${this.apiKey}`,
-          "HTTP-Referer": "https://github.com/gundurraga/bad-buggy",
-          "X-Title": "bad-buggy",
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: [{ role: "user", content: prompt }],
-        }),
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error(`OpenRouter API error: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    return data.choices[0].message.content;
-  }
-
-  _parseResponse(response) {
-    try {
-      // Try to parse the full response first
-      return JSON.parse(response);
-    } catch (e) {
-      // If that fails, try to extract JSON from the response
-      try {
-        const jsonMatch = response.match(/\[[\s\S]*\]/);
-        if (jsonMatch) {
-          return JSON.parse(jsonMatch[0]);
-        } else {
-          core.warning(
-            "Failed to parse AI response as JSON - no JSON array found"
-          );
-          return [];
-        }
-      } catch (e2) {
-        core.warning("Failed to parse AI response as JSON");
-        core.warning(`Response was: ${response.substring(0, 500)}...`);
-        return [];
-      }
-    }
-  }
-}
-
-module.exports = { AIProvider };
-
-
-/***/ }),
-
-/***/ 6055:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-const core = __nccwpck_require__(2186);
-
-class GitHubService {
-  constructor(octokit, context) {
-    this.octokit = octokit;
-    this.context = context;
-  }
-
-  async getPRDiff(pr, config) {
-    try {
-      const response = await this.octokit.rest.pulls.get({
-        owner: this.context.repo.owner,
-        repo: this.context.repo.repo,
-        pull_number: pr.number,
-        mediaType: {
-          format: "diff",
-        },
-      });
-
-      return response.data;
-    } catch (error) {
-      core.error(`Failed to get PR diff: ${error.message}`);
-      return "";
-    }
-  }
-
-  async postReview(pr, comments, costSummary) {
-    let reviewBody = `bad-buggy review completed with ${comments.length} comments\n\n${costSummary}`;
-
-    if (comments.length === 0) {
-      reviewBody = `bad-buggy found no issues! Great job! 🎉\n\n${costSummary}`;
-      await this._postComment(pr, reviewBody);
-      return;
-    }
-
-    // Create review with comments
-    const review = {
-      owner: this.context.repo.owner,
-      repo: this.context.repo.repo,
-      pull_number: pr.number,
-      event: "COMMENT",
-      body: reviewBody,
-      comments: comments.map((c) => ({
-        path: c.file,
-        line: c.line || 1,
-        body: `**${c.severity}** (${c.category}): ${c.comment}`,
-      })),
-    };
-
-    try {
-      await this.octokit.rest.pulls.createReview(review);
-      core.info(`Posted ${comments.length} review comments`);
-    } catch (error) {
-      core.error(`Failed to post review: ${error.message}`);
-      // Fall back to posting as individual comments
-      await this._fallbackToComments(pr, comments);
-    }
-  }
-
-  async _postComment(pr, body) {
-    await this.octokit.rest.issues.createComment({
-      owner: this.context.repo.owner,
-      repo: this.context.repo.repo,
-      issue_number: pr.number,
-      body,
-    });
-  }
-
-  async _fallbackToComments(pr, comments) {
-    for (const comment of comments) {
-      try {
-        await this._postComment(pr, `**${comment.file}**: ${comment.comment}`);
-      } catch (e) {
-        core.error(`Failed to post comment: ${e.message}`);
-      }
-    }
-  }
-}
-
-module.exports = { GitHubService };
-
-
-/***/ }),
-
-/***/ 3021:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-const fs = __nccwpck_require__(7147);
-const yaml = __nccwpck_require__(1917);
-const core = __nccwpck_require__(2186);
-
-// Default configuration
-const DEFAULT_CONFIG = {
-  review_prompt: `ENHANCED CODE REVIEW PROMPT: Critical Analysis & Developer Assessment
-
-CONTEXT: Today is ${
-    new Date().toISOString().split("T")[0]
-  }. Review with current best practices in mind.
-
-MANDATORY FIRST STEP - IDENTIFY MOST CRITICAL ISSUE:
-Priority 1: Functional failures (broken core functionality, data corruption risks, critical security vulnerabilities, memory leaks)
-Priority 2: System stability (poor error handling, race conditions, performance bottlenecks)  
-Priority 3: Maintainability blockers (architectural violations, tight coupling, code duplication)
-
-Output format: "MOST CRITICAL ISSUE: [Category] - [Description]. IMPACT: [What breaks if unfixed]. IMMEDIATE ACTION: [Specific fix needed]."
-
-EVALUATION FRAMEWORK:
-- Functional Correctness: Requirements met, edge cases handled, input validation, boundary conditions
-- Technical Implementation: Algorithm efficiency, architecture decisions, technology usage appropriately
-- Code Quality: Readability (clear naming, formatting), documentation (explains why not just what), comprehensive error handling
-- Testing & Reliability: Unit/integration tests, edge case coverage, proper mocking
-- Security & Safety: Input sanitization, authentication checks, no hardcoded secrets
-
-ANTIPATTERN DETECTION - Flag and educate on:
-- God objects/functions (200+ line functions doing everything)
-- Magic numbers/strings (use constants with descriptive names)
-- Poor error handling (silent failures, swallowing exceptions)
-- Tight coupling (changes requiring modifications across unrelated modules)
-- Code duplication (repeated logic that should be abstracted)
-
-COMMENT STRATEGY: Only add comments for genuinely critical issues that will impact functionality, security, or long-term maintainability. Skip minor style preferences unless they create real problems.`,
-  max_comments: 8,
-  prioritize_by_severity: true,
-  review_aspects: [
-    "bugs",
-    "security_vulnerabilities",
-    "performance_issues",
-    "code_quality",
-    "best_practices",
-    "architecture_suggestions",
-  ],
-  ignore_patterns: [],
-};
-
-async function loadConfig(configFile) {
-  let config = { ...DEFAULT_CONFIG };
-
-  try {
-    if (fs.existsSync(configFile)) {
-      const fileContent = fs.readFileSync(configFile, "utf8");
-      const userConfig = yaml.load(fileContent);
-      config = { ...config, ...userConfig };
-      core.info(`Loaded configuration from ${configFile}`);
-    } else {
-      core.info(`No config file found at ${configFile}, using defaults`);
-    }
-  } catch (error) {
-    core.warning(
-      `Failed to load config file: ${error.message}, using defaults`
-    );
-  }
-
-  return config;
-}
-
-module.exports = { loadConfig, DEFAULT_CONFIG };
-
-
-/***/ }),
-
 /***/ 2877:
 /***/ ((module) => {
 
@@ -39028,13 +38600,57 @@ var __webpack_exports__ = {};
 (() => {
 const core = __nccwpck_require__(2186);
 const github = __nccwpck_require__(5438);
+const yaml = __nccwpck_require__(1917);
+const fs = __nccwpck_require__(7147);
 
-// Import our modular services
-const { loadConfig } = __nccwpck_require__(3021);
-const { CostCalculator } = __nccwpck_require__(8446);
-const { CommentProcessor } = __nccwpck_require__(260);
-const { AIProvider } = __nccwpck_require__(7285);
-const { GitHubService } = __nccwpck_require__(6055);
+// Default configuration
+const DEFAULT_CONFIG = {
+  review_prompt: `ENHANCED CODE REVIEW PROMPT: Critical Analysis & Developer Assessment
+
+CONTEXT: Today is ${
+    new Date().toISOString().split("T")[0]
+  }. Review with current best practices in mind.
+
+MANDATORY FIRST STEP - IDENTIFY MOST CRITICAL ISSUE:
+Priority 1: Functional failures (broken core functionality, data corruption risks, critical security vulnerabilities, memory leaks)
+Priority 2: System stability (poor error handling, race conditions, performance bottlenecks)  
+Priority 3: Maintainability blockers (architectural violations, tight coupling, code duplication)
+
+Output format: "MOST CRITICAL ISSUE: [Category] - [Description]. IMPACT: [What breaks if unfixed]. IMMEDIATE ACTION: [Specific fix needed]."
+
+EVALUATION FRAMEWORK:
+- Functional Correctness: Requirements met, edge cases handled, input validation, boundary conditions
+- Technical Implementation: Algorithm efficiency, architecture decisions, technology usage appropriately
+- Code Quality: Readability (clear naming, formatting), documentation (explains why not just what), comprehensive error handling
+- Testing & Reliability: Unit/integration tests, edge case coverage, proper mocking
+- Security & Safety: Input sanitization, authentication checks, no hardcoded secrets
+
+ANTIPATTERN DETECTION - Flag and educate on:
+- God objects/functions (200+ line functions doing everything)
+- Magic numbers/strings (use constants with descriptive names)
+- Poor error handling (silent failures, swallowing exceptions)
+- Tight coupling (changes requiring modifications across unrelated modules)
+- Code duplication (repeated logic that should be abstracted)
+
+COMMENT STRATEGY: Only add comments for genuinely critical issues that will impact functionality, security, or long-term maintainability. Skip minor style preferences unless they create real problems.`,
+  max_comments: 8,
+  prioritize_by_severity: true,
+  review_aspects: [
+    "bugs",
+    "security_vulnerabilities",
+    "performance_issues",
+    "code_quality",
+    "best_practices",
+    "architecture_suggestions",
+  ],
+  ignore_patterns: [],
+};
+
+// Model pricing (per 1M tokens)
+const MODEL_PRICING = {
+  "claude-4": { input: 3.0, output: 15.0 },
+  "claude-4-opus": { input: 15.0, output: 75.0 },
+};
 
 async function run() {
   try {
@@ -39050,16 +38666,10 @@ async function run() {
     const config = await loadConfig(configFile);
     config.model = model; // Override with input model
 
-    // Initialize services
+    // Get PR information
     const octokit = github.getOctokit(githubToken);
     const context = github.context;
 
-    const githubService = new GitHubService(octokit, context);
-    const aiProviderService = new AIProvider(aiProvider, apiKey);
-    const commentProcessor = new CommentProcessor(config);
-    const costCalculator = new CostCalculator(model);
-
-    // Validate PR context
     if (!context.payload.pull_request) {
       core.setFailed("This action only works on pull requests");
       return;
@@ -39068,42 +38678,332 @@ async function run() {
     const pr = context.payload.pull_request;
 
     // Get PR diff
-    const diff = await githubService.getPRDiff(pr, config);
-    if (!diff) {
-      core.warning("No diff found for this PR");
-      return;
-    }
+    const diff = await getPRDiff(octokit, context, pr, config);
 
     // Chunk the diff if needed
-    const chunks = commentProcessor.chunkDiff(diff);
+    const chunks = chunkDiff(diff, config);
 
     // Review each chunk
-    const allComments = [];
-    let totalTokens = { input: 0, output: 0 };
+    const reviews = [];
+    let totalCost = { input: 0, output: 0 };
 
     for (const chunk of chunks) {
-      const review = await aiProviderService.reviewChunk(chunk, config);
-      allComments.push(...review.comments);
-      totalTokens.input += review.inputTokens;
-      totalTokens.output += review.outputTokens;
+      const review = await reviewChunk(chunk, config, aiProvider, apiKey);
+      reviews.push(...review.comments);
+      totalCost.input += review.inputTokens;
+      totalCost.output += review.outputTokens;
     }
 
-    // Process and filter comments
-    const finalComments = commentProcessor.process(allComments);
+    // Sort and limit comments
+    const finalComments = processComments(reviews, config);
 
-    // Calculate costs
-    const costSummary = costCalculator.formatCostSummary(totalTokens);
+    // Post review
+    await postReview(
+      octokit,
+      context,
+      pr,
+      finalComments,
+      config.model,
+      totalCost
+    );
 
-    // Post review to GitHub
-    await githubService.postReview(pr, finalComments, costSummary.summary);
-
-    // Report cost to logs
-    core.info(costSummary.logSummary);
-
-    core.info(`Review completed: ${finalComments.length} comments posted`);
+    // Report cost (to console logs)
+    reportCost(config.model, totalCost);
   } catch (error) {
     core.setFailed(`Action failed: ${error.message}`);
   }
+}
+
+async function loadConfig(configFile) {
+  try {
+    const configContent = fs.readFileSync(configFile, "utf8");
+    const userConfig = yaml.load(configContent);
+    return { ...DEFAULT_CONFIG, ...userConfig };
+  } catch (error) {
+    core.info(`No config file found at ${configFile}, using defaults`);
+    return DEFAULT_CONFIG;
+  }
+}
+
+async function getPRDiff(octokit, context, pr, config) {
+  const { data: files } = await octokit.rest.pulls.listFiles({
+    owner: context.repo.owner,
+    repo: context.repo.repo,
+    pull_number: pr.number,
+  });
+
+  let diff = "";
+  for (const file of files) {
+    // Skip ignored files
+    if (shouldIgnoreFile(file.filename, config)) continue;
+
+    diff += `\n\n--- File: ${file.filename} ---\n`;
+    diff += `Status: ${file.status}\n`;
+    diff += `Changes: +${file.additions} -${file.deletions}\n`;
+    if (file.patch) {
+      diff += file.patch;
+    }
+  }
+
+  return diff;
+}
+
+function shouldIgnoreFile(filename, config) {
+  // Simple pattern matching - could be enhanced
+  const ignorePatterns = config.ignore_patterns || [];
+  for (const pattern of ignorePatterns) {
+    if (filename.includes(pattern.replace("*", ""))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function chunkDiff(diff, config) {
+  // Simple chunking by size - aim for ~4000 tokens per chunk
+  const MAX_CHUNK_SIZE = 12000; // characters, roughly 3000 tokens
+  const chunks = [];
+
+  if (diff.length <= MAX_CHUNK_SIZE) {
+    return [diff];
+  }
+
+  // Split by files
+  const files = diff.split("\n\n--- File:");
+  let currentChunk = "";
+
+  for (const file of files) {
+    if (currentChunk.length + file.length > MAX_CHUNK_SIZE) {
+      chunks.push(currentChunk);
+      currentChunk = "--- File:" + file;
+    } else {
+      currentChunk += "\n\n--- File:" + file;
+    }
+  }
+
+  if (currentChunk) {
+    chunks.push(currentChunk);
+  }
+
+  return chunks;
+}
+
+async function reviewChunk(chunk, config, provider, apiKey) {
+  const prompt = `${config.review_prompt}
+
+Please review the following code changes and provide feedback as a JSON array of comments.
+Each comment should have:
+- file: the filename
+- line: the line number (from the diff)
+- severity: "critical", "major", "minor", or "suggestion"
+- category: one of ${config.review_aspects.join(", ")}
+- comment: your feedback
+
+Examples of correct JSON responses (only for CRITICAL issues):
+
+[
+  {
+    "file": "src/auth.js",
+    "line": 45,
+    "severity": "critical",
+    "category": "security_vulnerabilities",
+    "comment": "CRITICAL: SQL injection vulnerability. User input 'userInput' is directly concatenated into query without sanitization. IMPACT: Database compromise, data theft. IMMEDIATE ACTION: Use parameterized queries or ORM methods."
+  },
+  {
+    "file": "src/payment.js", 
+    "line": 78,
+    "severity": "critical",
+    "category": "bugs",
+    "comment": "CRITICAL: Race condition in payment processing. Multiple concurrent transactions can cause double-charging. IMPACT: Financial loss, customer complaints. IMMEDIATE ACTION: Add transaction locking or atomic operations."
+  }
+]
+
+Code changes:
+${chunk}
+
+Respond with ONLY a JSON array, no other text. Do not include explanations, thinking, or any text outside the JSON array. Start your response with [ and end with ].`;
+
+  let response;
+  let inputTokens = Math.ceil(prompt.length / 4); // rough estimate
+  let outputTokens = 0;
+
+  if (provider === "anthropic") {
+    response = await callAnthropic(prompt, config.model, apiKey);
+  } else if (provider === "openrouter") {
+    response = await callOpenRouter(prompt, config.model, apiKey);
+  } else {
+    throw new Error(`Unknown provider: ${provider}`);
+  }
+
+  outputTokens = Math.ceil(response.length / 4); // rough estimate
+
+  // Parse response
+  let comments = [];
+  try {
+    // Try to parse the full response first
+    comments = JSON.parse(response);
+  } catch (e) {
+    // If that fails, try to extract JSON from the response
+    try {
+      const jsonMatch = response.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        comments = JSON.parse(jsonMatch[0]);
+      } else {
+        core.warning(
+          "Failed to parse AI response as JSON - no JSON array found"
+        );
+        comments = [];
+      }
+    } catch (e2) {
+      core.warning("Failed to parse AI response as JSON");
+      core.warning(`Response was: ${response.substring(0, 500)}...`);
+      comments = [];
+    }
+  }
+
+  return { comments, inputTokens, outputTokens };
+}
+
+async function callAnthropic(prompt, model, apiKey) {
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: model,
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 4000,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Anthropic API error: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data.content[0].text;
+}
+
+async function callOpenRouter(prompt, model, apiKey) {
+  const response = await fetch(
+    "https://openrouter.ai/api/v1/chat/completions",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+        "HTTP-Referer": "https://github.com/gundurraga/bad-buggy",
+        "X-Title": "bad-buggy",
+      },
+      body: JSON.stringify({
+        model: model,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`OpenRouter API error: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data.choices[0].message.content;
+}
+
+function processComments(comments, config) {
+  // Remove duplicates
+  const unique = comments.filter(
+    (comment, index, self) =>
+      index ===
+      self.findIndex((c) => c.file === comment.file && c.line === comment.line)
+  );
+
+  // Sort by severity if needed
+  if (config.prioritize_by_severity) {
+    const severityOrder = { critical: 0, major: 1, minor: 2, suggestion: 3 };
+    unique.sort(
+      (a, b) => severityOrder[a.severity] - severityOrder[b.severity]
+    );
+  }
+
+  // Limit number of comments
+  return unique.slice(0, config.max_comments);
+}
+
+async function postReview(octokit, context, pr, comments, model, totalTokens) {
+  // Calculate cost
+  const pricing = MODEL_PRICING[model] || MODEL_PRICING["claude-4"];
+  const inputCost = (totalTokens.input / 1000000) * pricing.input;
+  const outputCost = (totalTokens.output / 1000000) * pricing.output;
+  const totalCost = inputCost + outputCost;
+
+  let reviewBody = `🐰 bad-buggy review completed with ${comments.length} comments\n\n`;
+  reviewBody += `**Review Cost:**\n`;
+  reviewBody += `- Model: ${model}\n`;
+  reviewBody += `- Total cost: ${totalCost.toFixed(4)}\n`;
+  reviewBody += `- Tokens: ${totalTokens.input.toLocaleString()} input, ${totalTokens.output.toLocaleString()} output`;
+
+  if (comments.length === 0) {
+    reviewBody = `🐰 bad-buggy found no issues! Great job! 🎉\n\n${reviewBody}`;
+    await octokit.rest.issues.createComment({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      issue_number: pr.number,
+      body: reviewBody,
+    });
+    return;
+  }
+
+  // Create review
+  const review = {
+    owner: context.repo.owner,
+    repo: context.repo.repo,
+    pull_number: pr.number,
+    event: "COMMENT",
+    body: reviewBody,
+    comments: comments.map((c) => ({
+      path: c.file,
+      line: c.line || 1,
+      body: `**${c.severity}** (${c.category}): ${c.comment}`,
+    })),
+  };
+
+  try {
+    await octokit.rest.pulls.createReview(review);
+    core.info(`Posted ${comments.length} review comments`);
+  } catch (error) {
+    core.error(`Failed to post review: ${error.message}`);
+    // Fall back to posting as individual comments
+    for (const comment of comments) {
+      try {
+        await octokit.rest.issues.createComment({
+          owner: context.repo.owner,
+          repo: context.repo.repo,
+          issue_number: pr.number,
+          body: `**${comment.file}**: ${comment.comment}`,
+        });
+      } catch (e) {
+        core.error(`Failed to post comment: ${e.message}`);
+      }
+    }
+  }
+}
+
+function reportCost(model, tokens) {
+  const pricing = MODEL_PRICING[model] || MODEL_PRICING["claude-4"];
+  const inputCost = (tokens.input / 1000000) * pricing.input;
+  const outputCost = (tokens.output / 1000000) * pricing.output;
+  const totalCost = inputCost + outputCost;
+
+  core.info("=== Bad Buggy Cost Summary ===");
+  core.info(`Model: ${model}`);
+  core.info(`Input tokens: ${tokens.input.toLocaleString()}`);
+  core.info(`Output tokens: ${tokens.output.toLocaleString()}`);
+  core.info(`Total cost: $${totalCost.toFixed(4)}`);
+  core.info("============================");
 }
 
 // Run the action

@@ -2,8 +2,6 @@
 
 A simple, cost-effective GitHub Action that uses AI to review your pull requests. Supports both OpenRouter and Anthropic APIs with transparent cost tracking.
 
-> _Like Bad Bunny, but for bugs_ 🎵
-
 ## Features
 
 - 🤖 **AI-powered code reviews** using Claude (via Anthropic or OpenRouter)
@@ -117,10 +115,10 @@ bad-buggy automatically calculates and displays the cost of each review in the P
 
 ### Estimated Costs
 
-| Model             | Cost per 1M tokens         | Avg PR Cost |
-| ----------------- | -------------------------- | ----------- |
-| Claude 3 Haiku    | $0.25 input / $1.25 output | ~$0.002     |
-| Claude 3.5 Sonnet | $3 input / $15 output      | ~$0.02      |
+| Model           | Cost per 1M tokens         | Avg PR Cost |
+| --------------- | -------------------------- | ----------- |
+| Claude 3 Haiku  | $0.25 input / $1.25 output | ~$0.002     |
+| Claude 4 Sonnet | $3 input / $15 output      | ~$0.02      |
 
 ## Examples
 

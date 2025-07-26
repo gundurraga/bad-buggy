@@ -38778,10 +38778,29 @@ Each comment should have:
 - category: one of ${config.review_aspects.join(", ")}
 - comment: your feedback
 
+Examples of correct JSON responses:
+
+[
+  {
+    "file": "src/auth.js",
+    "line": 45,
+    "severity": "critical",
+    "category": "security_vulnerabilities",
+    "comment": "SQL injection vulnerability: user input is not sanitized before being used in query"
+  },
+  {
+    "file": "src/utils.js", 
+    "line": 12,
+    "severity": "minor",
+    "category": "code_quality",
+    "comment": "Consider using const instead of let for variables that are not reassigned"
+  }
+]
+
 Code changes:
 ${chunk}
 
-Respond with ONLY a JSON array, no other text.`;
+Respond with ONLY a JSON array, no other text. Do not include explanations, thinking, or any text outside the JSON array. Start your response with [ and end with ].`;
 
   let response;
   let inputTokens = Math.ceil(prompt.length / 4); // rough estimate
@@ -38800,10 +38819,25 @@ Respond with ONLY a JSON array, no other text.`;
   // Parse response
   let comments = [];
   try {
+    // Try to parse the full response first
     comments = JSON.parse(response);
   } catch (e) {
-    core.warning("Failed to parse AI response as JSON");
-    comments = [];
+    // If that fails, try to extract JSON from the response
+    try {
+      const jsonMatch = response.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        comments = JSON.parse(jsonMatch[0]);
+      } else {
+        core.warning(
+          "Failed to parse AI response as JSON - no JSON array found"
+        );
+        comments = [];
+      }
+    } catch (e2) {
+      core.warning("Failed to parse AI response as JSON");
+      core.warning(`Response was: ${response.substring(0, 500)}...`);
+      comments = [];
+    }
   }
 
   return { comments, inputTokens, outputTokens };
@@ -38943,7 +38977,7 @@ function reportCost(model, tokens) {
   const outputCost = (tokens.output / 1000000) * pricing.output;
   const totalCost = inputCost + outputCost;
 
-  core.info("=== AI Review Cost Summary ===");
+  core.info("=== Bad Buggy Cost Summary ===");
   core.info(`Model: ${model}`);
   core.info(`Input tokens: ${tokens.input.toLocaleString()}`);
   core.info(`Output tokens: ${tokens.output.toLocaleString()}`);

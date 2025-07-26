@@ -1,4 +1,4 @@
-# bad-buggy reviews itself! 🐰
+# bad-buggy reviews itself!
 
 review_prompt: |
   You are reviewing bad-buggy - an AI code review GitHub Action.
@@ -25,7 +25,6 @@ review_aspects:
 
 # Don't review these files
 ignore_patterns:
-  - "*.md"
   - "package-lock.json"
   - "dist/*"
   - "LICENSE"

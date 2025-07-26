@@ -5,14 +5,35 @@ const fs = require("fs");
 
 // Default configuration
 const DEFAULT_CONFIG = {
-  review_prompt: `You are an AI code reviewer. Review this code for:
-- Bugs and potential issues
-- Security vulnerabilities
-- Performance problems
-- Code quality and best practices
-- Architecture and design improvements
-Be constructive and specific. Suggest improvements.`,
-  max_comments: 15,
+  review_prompt: `ENHANCED CODE REVIEW PROMPT: Critical Analysis & Developer Assessment
+
+CONTEXT: Today is ${
+    new Date().toISOString().split("T")[0]
+  }. Review with current best practices in mind.
+
+MANDATORY FIRST STEP - IDENTIFY MOST CRITICAL ISSUE:
+Priority 1: Functional failures (broken core functionality, data corruption risks, critical security vulnerabilities, memory leaks)
+Priority 2: System stability (poor error handling, race conditions, performance bottlenecks)  
+Priority 3: Maintainability blockers (architectural violations, tight coupling, code duplication)
+
+Output format: "MOST CRITICAL ISSUE: [Category] - [Description]. IMPACT: [What breaks if unfixed]. IMMEDIATE ACTION: [Specific fix needed]."
+
+EVALUATION FRAMEWORK:
+- Functional Correctness: Requirements met, edge cases handled, input validation, boundary conditions
+- Technical Implementation: Algorithm efficiency, architecture decisions, technology usage appropriately
+- Code Quality: Readability (clear naming, formatting), documentation (explains why not just what), comprehensive error handling
+- Testing & Reliability: Unit/integration tests, edge case coverage, proper mocking
+- Security & Safety: Input sanitization, authentication checks, no hardcoded secrets
+
+ANTIPATTERN DETECTION - Flag and educate on:
+- God objects/functions (200+ line functions doing everything)
+- Magic numbers/strings (use constants with descriptive names)
+- Poor error handling (silent failures, swallowing exceptions)
+- Tight coupling (changes requiring modifications across unrelated modules)
+- Code duplication (repeated logic that should be abstracted)
+
+COMMENT STRATEGY: Only add comments for genuinely critical issues that will impact functionality, security, or long-term maintainability. Skip minor style preferences unless they create real problems.`,
+  max_comments: 8,
   prioritize_by_severity: true,
   review_aspects: [
     "bugs",
@@ -178,7 +199,7 @@ Each comment should have:
 - category: one of ${config.review_aspects.join(", ")}
 - comment: your feedback
 
-Examples of correct JSON responses:
+Examples of correct JSON responses (only for CRITICAL issues):
 
 [
   {
@@ -186,14 +207,14 @@ Examples of correct JSON responses:
     "line": 45,
     "severity": "critical",
     "category": "security_vulnerabilities",
-    "comment": "SQL injection vulnerability: user input is not sanitized before being used in query"
+    "comment": "CRITICAL: SQL injection vulnerability. User input 'userInput' is directly concatenated into query without sanitization. IMPACT: Database compromise, data theft. IMMEDIATE ACTION: Use parameterized queries or ORM methods."
   },
   {
-    "file": "src/utils.js", 
-    "line": 12,
-    "severity": "minor",
-    "category": "code_quality",
-    "comment": "Consider using const instead of let for variables that are not reassigned"
+    "file": "src/payment.js", 
+    "line": 78,
+    "severity": "critical",
+    "category": "bugs",
+    "comment": "CRITICAL: Race condition in payment processing. Multiple concurrent transactions can cause double-charging. IMPACT: Financial loss, customer complaints. IMMEDIATE ACTION: Add transaction locking or atomic operations."
   }
 ]
 

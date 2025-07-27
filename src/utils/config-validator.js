@@ -12,7 +12,11 @@ function validateConfig(config) {
   const errors = [];
 
   // Validate required fields
-  if (!config.review_prompt || typeof config.review_prompt !== "string") {
+  if (
+    !config.review_prompt ||
+    typeof config.review_prompt !== "string" ||
+    config.review_prompt.trim() === ""
+  ) {
     errors.push("review_prompt must be a non-empty string");
   }
 
@@ -68,6 +72,10 @@ function validateInputs(inputs) {
 
   if (!githubToken) {
     errors.push("github-token is required");
+  } else if (!githubToken.match(/^(ghp_|ghs_|github_pat_)/)) {
+    errors.push(
+      "github-token must be a valid GitHub token (starts with ghp_, ghs_, or github_pat_)"
+    );
   }
 
   if (!aiProvider) {
@@ -78,6 +86,15 @@ function validateInputs(inputs) {
 
   if (!apiKey) {
     errors.push("api-key is required");
+  } else {
+    // Basic API key format validation
+    if (aiProvider === "anthropic" && !apiKey.startsWith("sk-ant-")) {
+      errors.push("Anthropic API key should start with 'sk-ant-'");
+    } else if (aiProvider === "openrouter" && !apiKey.startsWith("sk-or-")) {
+      errors.push("OpenRouter API key should start with 'sk-or-'");
+    } else if (apiKey.length < 20) {
+      errors.push("API key seems too short to be valid");
+    }
   }
 
   if (!model) {

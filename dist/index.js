@@ -36660,6 +36660,59 @@ function wrappy (fn, cb) {
 
 /***/ }),
 
+/***/ 817:
+/***/ ((module) => {
+
+// Default configuration for bad-buggy AI code review
+const DEFAULT_CONFIG = {
+  review_prompt: `CONTEXT: Today is {{DATE}}. Review with current best practices in mind.
+
+MANDATORY FIRST STEP - IDENTIFY MOST CRITICAL ISSUE:
+Priority 1: Functional failures (broken core functionality, data corruption risks, critical security vulnerabilities, memory leaks)
+Priority 2: System stability (poor error handling, race conditions, performance bottlenecks)  
+Priority 3: Maintainability blockers (architectural violations, tight coupling, code duplication)
+
+Output format: "MOST CRITICAL ISSUE: [Category] - [Description]. IMPACT: [What breaks if unfixed]. IMMEDIATE ACTION: [Specific fix needed]."
+
+EVALUATION FRAMEWORK:
+- Functional Correctness: Requirements met, edge cases handled, input validation, boundary conditions
+- Technical Implementation: Algorithm efficiency, architecture decisions, technology usage appropriately
+- Code Quality: Readability (clear naming, formatting), documentation (explains why not just what), comprehensive error handling
+- Testing & Reliability: Unit/integration tests, edge case coverage, proper mocking
+- Security & Safety: Input sanitization, authentication checks, no hardcoded secrets
+
+ANTIPATTERN DETECTION - Flag and educate on:
+- God objects/functions (200+ line functions doing everything)
+- Magic numbers/strings (use constants with descriptive names)
+- Poor error handling (silent failures, swallowing exceptions)
+- Tight coupling (changes requiring modifications across unrelated modules)
+- Code duplication (repeated logic that should be abstracted)
+
+COMMENT STRATEGY: Only add comments for genuinely critical issues that will impact functionality, security, or long-term maintainability. Skip minor style preferences unless they create real problems.`,
+  max_comments: 5,
+  prioritize_by_severity: true,
+  review_aspects: [
+    "bugs",
+    "security_vulnerabilities",
+    "performance_issues",
+    "code_quality",
+    "best_practices",
+    "architecture_suggestions",
+    "code_organization",
+    "code_readability",
+    "code_maintainability",
+  ],
+  ignore_patterns: [],
+  allowed_users: [], // Empty array means allow all users
+};
+
+module.exports = {
+  DEFAULT_CONFIG,
+};
+
+
+/***/ }),
+
 /***/ 1269:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -36785,7 +36838,11 @@ function validateConfig(config) {
   const errors = [];
 
   // Validate required fields
-  if (!config.review_prompt || typeof config.review_prompt !== "string") {
+  if (
+    !config.review_prompt ||
+    typeof config.review_prompt !== "string" ||
+    config.review_prompt.trim() === ""
+  ) {
     errors.push("review_prompt must be a non-empty string");
   }
 
@@ -36841,6 +36898,10 @@ function validateInputs(inputs) {
 
   if (!githubToken) {
     errors.push("github-token is required");
+  } else if (!githubToken.match(/^(ghp_|ghs_|github_pat_)/)) {
+    errors.push(
+      "github-token must be a valid GitHub token (starts with ghp_, ghs_, or github_pat_)"
+    );
   }
 
   if (!aiProvider) {
@@ -36851,6 +36912,15 @@ function validateInputs(inputs) {
 
   if (!apiKey) {
     errors.push("api-key is required");
+  } else {
+    // Basic API key format validation
+    if (aiProvider === "anthropic" && !apiKey.startsWith("sk-ant-")) {
+      errors.push("Anthropic API key should start with 'sk-ant-'");
+    } else if (aiProvider === "openrouter" && !apiKey.startsWith("sk-or-")) {
+      errors.push("OpenRouter API key should start with 'sk-or-'");
+    } else if (apiKey.length < 20) {
+      errors.push("API key seems too short to be valid");
+    }
   }
 
   if (!model) {
@@ -38827,51 +38897,7 @@ const {
   validateInputs,
   ConfigValidationError,
 } = __nccwpck_require__(2936);
-
-// Default configuration
-const DEFAULT_CONFIG = {
-  review_prompt: `ENHANCED CODE REVIEW PROMPT: Critical Analysis & Developer Assessment
-
-CONTEXT: Today is {{DATE}}. Review with current best practices in mind.
-
-MANDATORY FIRST STEP - IDENTIFY MOST CRITICAL ISSUE:
-Priority 1: Functional failures (broken core functionality, data corruption risks, critical security vulnerabilities, memory leaks)
-Priority 2: System stability (poor error handling, race conditions, performance bottlenecks)  
-Priority 3: Maintainability blockers (architectural violations, tight coupling, code duplication)
-
-Output format: "MOST CRITICAL ISSUE: [Category] - [Description]. IMPACT: [What breaks if unfixed]. IMMEDIATE ACTION: [Specific fix needed]."
-
-EVALUATION FRAMEWORK:
-- Functional Correctness: Requirements met, edge cases handled, input validation, boundary conditions
-- Technical Implementation: Algorithm efficiency, architecture decisions, technology usage appropriately
-- Code Quality: Readability (clear naming, formatting), documentation (explains why not just what), comprehensive error handling
-- Testing & Reliability: Unit/integration tests, edge case coverage, proper mocking
-- Security & Safety: Input sanitization, authentication checks, no hardcoded secrets
-
-ANTIPATTERN DETECTION - Flag and educate on:
-- God objects/functions (200+ line functions doing everything)
-- Magic numbers/strings (use constants with descriptive names)
-- Poor error handling (silent failures, swallowing exceptions)
-- Tight coupling (changes requiring modifications across unrelated modules)
-- Code duplication (repeated logic that should be abstracted)
-
-COMMENT STRATEGY: Only add comments for genuinely critical issues that will impact functionality, security, or long-term maintainability. Skip minor style preferences unless they create real problems.`,
-  max_comments: 5,
-  prioritize_by_severity: true,
-  review_aspects: [
-    "bugs",
-    "security_vulnerabilities",
-    "performance_issues",
-    "code_quality",
-    "best_practices",
-    "architecture_suggestions",
-    "code_organization",
-    "code_readability",
-    "code_maintainability",
-  ],
-  ignore_patterns: [],
-  allowed_users: [], // Empty array means allow all users
-};
+const { DEFAULT_CONFIG } = __nccwpck_require__(817);
 
 // Model pricing (per 1M tokens)
 const MODEL_PRICING = {
@@ -38935,10 +38961,10 @@ async function run() {
 
     // Check if user is authorized to trigger reviews
     if (config.allowed_users && config.allowed_users.length > 0) {
-      const prAuthor = pr.user.login;
-      if (!config.allowed_users.includes(prAuthor)) {
+      const triggeringUser = context.actor; // User who triggered the workflow
+      if (!config.allowed_users.includes(triggeringUser)) {
         core.info(
-          `Review skipped: User ${prAuthor} is not in the allowed users list`
+          `Review skipped: User ${triggeringUser} is not in the allowed users list`
         );
         await octokit.rest.issues.createComment({
           owner: context.repo.owner,
@@ -39172,7 +39198,7 @@ async function postReview(octokit, context, pr, comments, model, totalTokens) {
   let reviewBody = `bad-buggy review completed with ${comments.length} comments\n\n`;
   reviewBody += `**Review Cost:**\n`;
   reviewBody += `- Model: ${model}\n`;
-  reviewBody += `- Total cost: ${totalCost.toFixed(4)}\n`;
+  reviewBody += `- Total cost: $${totalCost.toFixed(4)}\n`;
   reviewBody += `- Tokens: ${totalTokens.input.toLocaleString()} input, ${totalTokens.output.toLocaleString()} output`;
 
   if (comments.length === 0) {

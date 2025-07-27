@@ -1,4 +1,4 @@
-# 💀 Bad Buggy
+# 🐰 Bad Buggy
 
 A simple, cost-effective GitHub Action that uses AI to review your pull requests. Supports both OpenRouter and Anthropic APIs with transparent cost tracking.
 

@@ -36846,6 +36846,8 @@ async function performSecurityCheck(octokit, context, pr, config) {
 
     // 2. Check repository collaborator permissions
     let hasWriteAccess = false;
+    let permissionCheckFailed = false;
+
     try {
       const { data: collaborator } =
         await octokit.rest.repos.getCollaboratorPermissionLevel({
@@ -36855,15 +36857,49 @@ async function performSecurityCheck(octokit, context, pr, config) {
         });
       hasWriteAccess = ["admin", "write"].includes(collaborator.permission);
     } catch (error) {
-      // User is not a collaborator
-      hasWriteAccess = false;
+      // Differentiate between user not found vs API failure
+      if (error.status === 404) {
+        // User is not a collaborator - this is expected
+        hasWriteAccess = false;
+      } else {
+        // API failure (rate limit, network, etc.) - security risk
+        core.error(`GitHub API permission check failed: ${error.message}`);
+        permissionCheckFailed = true;
+        hasWriteAccess = false;
+      }
+    }
+
+    // Fail securely if we couldn't verify permissions
+    if (permissionCheckFailed) {
+      return {
+        allowed: false,
+        reason: `Permission check failed for ${triggeringUser} - cannot verify authorization`,
+        message: `Automated review skipped: Unable to verify user permissions due to API error. Please try again later.`,
+      };
     }
 
     // 3. Check explicit allowlist (if configured)
+    let allowedUsers = [];
+
+    // Option 1: Static config allowlist
+    if (config.allowed_users && config.allowed_users.length > 0) {
+      allowedUsers = config.allowed_users;
+    }
+    // Option 2: Environment-based allowlist (for organizations)
+    else if (
+      config.allowed_users_env &&
+      process.env[config.allowed_users_env]
+    ) {
+      allowedUsers = process.env[config.allowed_users_env]
+        .split(",")
+        .map((u) => u.trim());
+      core.info(
+        `Using environment-based allowlist: ${allowedUsers.length} users`
+      );
+    }
+
     const isInAllowlist =
-      config.allowed_users && config.allowed_users.length > 0
-        ? config.allowed_users.includes(triggeringUser)
-        : true; // No allowlist = allow all collaborators
+      allowedUsers.length > 0 ? allowedUsers.includes(triggeringUser) : true; // No allowlist = allow all collaborators
 
     // 4. Final decision logic
     const isRepoOwner = triggeringUser === repoOwner;
@@ -39300,9 +39336,9 @@ async function postReview(octokit, context, pr, comments, model, totalTokens) {
   let reviewBody = `Bad Buggy review completed with ${comments.length} comments\n\n`;
   reviewBody += `**Review Cost:**\n`;
   reviewBody += `- Model: ${model}\n`;
-  reviewBody += `- Total cost: $${totalCost.toFixed(4)}\n (equal to ${
+  reviewBody += `- Total cost: $${totalCost.toFixed(4)} (equal to ${Math.round(
     1 / totalCost
-  } reviews per dollar)`;
+  )} reviews per dollar)\n`;
   reviewBody += `- Tokens: ${totalTokens.input.toLocaleString()} input, ${totalTokens.output.toLocaleString()} output`;
 
   if (comments.length === 0) {

@@ -314,9 +314,9 @@ async function postReview(octokit, context, pr, comments, model, totalTokens) {
   let reviewBody = `Bad Buggy review completed with ${comments.length} comments\n\n`;
   reviewBody += `**Review Cost:**\n`;
   reviewBody += `- Model: ${model}\n`;
-  reviewBody += `- Total cost: $${totalCost.toFixed(4)}\n (equal to ${
+  reviewBody += `- Total cost: $${totalCost.toFixed(4)} (equal to ${Math.round(
     1 / totalCost
-  } reviews per dollar)`;
+  )} reviews per dollar)\n`;
   reviewBody += `- Tokens: ${totalTokens.input.toLocaleString()} input, ${totalTokens.output.toLocaleString()} output`;
 
   if (comments.length === 0) {

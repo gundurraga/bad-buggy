@@ -39333,7 +39333,7 @@ function processComments(comments, config) {
 async function postReview(octokit, context, pr, comments, model, totalTokens) {
   const { totalCost } = calculateCost(model, totalTokens);
 
-  let reviewBody = `Bad Buggy review completed with ${comments.length} comments\n\n`;
+  let reviewBody = `🐰 Bad Buggy review completed with ${comments.length} comments\n\n`;
   reviewBody += `**Review Cost:**\n`;
   reviewBody += `- Model: ${model}\n`;
   reviewBody += `- Total cost: $${totalCost.toFixed(4)} (equal to ${Math.round(

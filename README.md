@@ -1,19 +1,17 @@
 # 🐰 Bad Buggy
 
-A simple, cost-effective GitHub Action that uses AI to review your pull requests. Supports both OpenRouter and Anthropic APIs with transparent cost tracking.
+A simple, cost-effective GitHub Action that uses AI to review and comment your pull requests. Get instant feedback with transparent cost tracking.
 
-## Features
+## What it does
 
-- 🤖 **AI-powered code reviews** using Claude (via Anthropic or OpenRouter)
-- 💰 **Transparent cost tracking** - know exactly how much each review costs
-- 🎯 **Customizable prompts** - tailor reviews to your project's needs
-- 📊 **Smart comment limiting** - set max comments and prioritize by criticality
-- 🏗️ **Architecture suggestions** - get high-level improvement ideas
-- 🔧 **Simple configuration** - one YAML file to rule them all
+- 🤖 **AI-powered code reviews** using Claude models
+- 💰 **Transparent cost tracking** - see exactly what each review costs
+- 🎯 **Smart commenting** - focuses on critical issues first
+- 🔧 **Easy setup** - just add a workflow file
 
-## Quick Start
+## Quick Setup
 
-### 1. Add the workflow to your repository
+### 1. Add the workflow
 
 Create `.github/workflows/ai-review.yml`:
 
@@ -35,242 +33,97 @@ jobs:
         uses: gundurraga/bad-buggy@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          ai-provider: "anthropic" # or 'openrouter'
+          ai-provider: "anthropic" # or "openrouter"
           api-key: ${{ secrets.ANTHROPIC_API_KEY }} # or OPENROUTER_API_KEY
-          model: "claude-3-haiku-20240307" # or claude-3-5-sonnet-20240620
+          model: "claude-sonnet-4-20250514"
 ```
 
-### 2. Configure repository permissions
+### 2. Set repository permissions
 
-Go to your repository's **Settings → Actions → General**:
+Go to **Settings → Actions → General**:
 
-1. Scroll down to **"Workflow permissions"**
-2. Select **"Read and write permissions"**
-3. Check **"Allow GitHub Actions to create and approve pull requests"**
-4. Click **Save**
+- Select **"Read and write permissions"**
+- Check **"Allow GitHub Actions to create and approve pull requests"**
+- Click **Save**
 
-_This allows bad-buggy to post review comments on your pull requests._
+### 3. Add your API key
 
-### 3. Set up your API key
+Go to **Settings → Secrets and variables → Actions** and add one of:
 
-Go to your repository's Settings → Secrets and variables → Actions, and add:
+- `ANTHROPIC_API_KEY` (get it from [console.anthropic.com](https://console.anthropic.com))
+- `OPENROUTER_API_KEY` (get it from [openrouter.ai](https://openrouter.ai))
 
-- For Anthropic: `ANTHROPIC_API_KEY`
-- For OpenRouter: `OPENROUTER_API_KEY`
+That's it! Bad Buggy will now review your pull requests.
 
-### 4. (Optional) Customize the review
+## Example Output
 
-Create `.github/ai-review-config.yml`:
+When a review is complete, you'll see a comment like this:
+
+```
+Bad Buggy review completed with 5 comments
+
+Review Cost:
+Model: claude-sonnet-4-20250514
+Total cost: $0.0469 (equal to 21 reviews per dollar)
+Tokens: 7,858 input, 1,556 output
+```
+
+Plus individual comments on specific lines of your code pointing out issues and suggestions.
+
+## Configuration (Optional)
+
+Create `.github/ai-review-config.yml` to customize:
 
 ```yaml
-# Review customization
+# Custom review instructions
 review_prompt: |
-  You are reviewing code for a Node.js web application.
-  Focus on security, performance, and maintainability.
-  Be constructive and suggest improvements.
+  Focus on security, performance, and best practices.
+  Be constructive and helpful.
 
-# Comment settings
+# Limit comments per review
 max_comments: 10
-prioritize_by_severity: true
 
 # What to review
 review_aspects:
   - security_vulnerabilities
   - performance_issues
-  - code_duplication
+  - bugs
   - best_practices
-  - architecture_suggestions
-  - product_improvements
 
-# Files to skip
+# Files to ignore
 ignore_patterns:
   - "*.md"
-  - "*.json"
   - "tests/*"
 ```
 
-## Configuration Options
+## Supported Providers
 
-### Workflow Inputs
+| Provider   | Models Available                        | Cost Range      |
+| ---------- | --------------------------------------- | --------------- |
+| Anthropic  | All Claude models (Haiku, Sonnet, Opus) | ~$0.002-0.05/PR |
+| OpenRouter | 400+ models including Claude, GPT, etc. | ~$0.001-0.10/PR |
 
-| Input          | Description                                       | Default                        | Required |
-| -------------- | ------------------------------------------------- | ------------------------------ | -------- |
-| `github-token` | GitHub token for API access                       | -                              | Yes      |
-| `ai-provider`  | AI provider to use (`anthropic` or `openrouter`)  | -                              | Yes      |
-| `api-key`      | API key for the AI provider                       | -                              | Yes      |
-| `model`        | AI model to use (e.g., `claude-3-haiku-20240307`) | -                              | Yes      |
-| `config-file`  | Path to config file                               | `.github/ai-review-config.yml` | No       |
+Choose your provider based on your needs:
 
-### Configuration File Options
-
-| Option                   | Description                             | Default            |
-| ------------------------ | --------------------------------------- | ------------------ |
-| `review_prompt`          | Custom instructions for the AI reviewer | See default prompt |
-| `max_comments`           | Maximum number of comments per review   | 15                 |
-| `prioritize_by_severity` | Order comments by importance            | true               |
-| `review_aspects`         | List of aspects to review               | All aspects        |
-| `ignore_patterns`        | File patterns to skip                   | None               |
-
-## Cost Tracking
-
-bad-buggy automatically calculates and displays the cost of each review in the PR comments:
-
-```
-🐰 bad-buggy review completed with 5 comments
-
-**Review Cost:**
-- Model: claude-3-haiku-20240307
-- Total cost: $0.0018
-- Tokens: 2,543 input, 856 output
-```
-
-### Estimated Costs
-
-| Model           | Cost per 1M tokens         | Avg PR Cost |
-| --------------- | -------------------------- | ----------- |
-| Claude 3 Haiku  | $0.25 input / $1.25 output | ~$0.002     |
-| Claude 4 Sonnet | $3 input / $15 output      | ~$0.02      |
-
-## Examples
-
-### Security-Focused Configuration
-
-```yaml
-review_prompt: |
-  You are a security expert reviewing code.
-  Look for: SQL injection, XSS, authentication issues, 
-  data exposure, and dependency vulnerabilities.
-
-review_aspects:
-  - security_vulnerabilities
-  - authentication_issues
-  - data_validation
-```
-
-### Architecture Review Configuration
-
-```yaml
-review_prompt: |
-  Focus on high-level architecture and design patterns.
-  Suggest improvements for scalability and maintainability.
-  Consider microservices principles and clean architecture.
-
-max_comments: 5
-review_aspects:
-  - architecture_suggestions
-  - design_patterns
-  - scalability_concerns
-```
-
-### Minimal Setup for bad-buggy itself
-
-```yaml
-name: bad-buggy self-review
-on:
-  pull_request:
-
-jobs:
-  review:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-      - uses: gundurraga/bad-buggy@v1
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          ai-provider: "anthropic"
-          api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-          model: "claude-3-haiku-20240307"
-```
-
-## How It Works
-
-1. **Triggered on PR**: The action runs when a PR is opened or updated
-2. **Fetches changes**: Gets the diff of all changed files
-3. **Chunks intelligently**: Splits large PRs into manageable pieces
-4. **Reviews with AI**: Sends chunks to AI with your custom prompt
-5. **Posts comments**: Adds review comments directly on the PR
-6. **Shows costs**: Reports the total cost of the review
-
-### How Comments Appear
-
-bad-buggy posts reviews as:
-
-- **Inline comments** on specific lines of code
-- **Summary comment** with total cost and review statistics
-- Uses the GitHub Actions bot profile picture
-- Groups all comments in a single review
-
-Example summary comment:
-
-```
-🐰 bad-buggy review completed with 5 comments
-
-**Review Cost:**
-- Model: claude-3-haiku-20240307
-- Total cost: $0.0018
-- Tokens: 2,543 input, 856 output
-```
-
-## Privacy & Security
-
-- Your code is sent to the AI provider you choose (Anthropic or OpenRouter)
-- API keys are stored as GitHub secrets and never exposed
-- Reviews are posted as comments on your PRs
-- No data is stored or logged by this action
+- **Anthropic**: Direct access to Claude models
+- **OpenRouter**: Access to multiple AI providers, often cheaper rates
 
 ## Troubleshooting
 
-### "Resource not accessible by integration" error
+**"Resource not accessible by integration" error?**
 
-If you see this error in your workflow logs:
+- Check repository permissions in Settings → Actions → General
+- Make sure you selected "Read and write permissions"
 
-```
-Error: Failed to post review: Resource not accessible by integration
-Error: Failed to post comment: Resource not accessible by integration
-```
+**No comments appearing?**
 
-**Solution:** Your repository needs proper permissions:
+- Verify your API key is added as a repository secret
+- Check the workflow logs for any errors
 
-1. Go to **Settings → Actions → General**
-2. Under **"Workflow permissions"**, select **"Read and write permissions"**
-3. Check **"Allow GitHub Actions to create and approve pull requests"**
-4. Click **Save**
+## Privacy
 
-### Workflow triggers but no comments appear
-
-- Check that you've added the required API key secret (`ANTHROPIC_API_KEY` or `OPENROUTER_API_KEY`)
-- Verify the model name is correct in your workflow file
-- Ensure the workflow permissions are set correctly (see above)
-
-## Contributing
-
-Contributions are welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a PR
+Your code is sent to your chosen AI provider (Anthropic or OpenRouter) for review. No data is stored by this action.
 
 ## License
 
 MIT License - see LICENSE file for details
-
-## Support
-
-- 🐛 [Report bugs](https://github.com/gundurraga/bad-buggy/issues)
-- 💡 [Request features](https://github.com/gundurraga/bad-buggy/issues)
-- 📖 [Read the wiki](https://github.com/gundurraga/bad-buggy/wiki)
-
-## Roadmap
-
-- [ ] Support for more AI providers (OpenAI, Cohere)
-- [ ] Inline code suggestions
-- [ ] Review conversation threads
-- [ ] Cost budgets and limits
-- [ ] Team-specific review profiles
-
----
-
-Made with ❤️ by the open-source community

@@ -3,6 +3,15 @@ const github = require("@actions/github");
 const yaml = require("js-yaml");
 const fs = require("fs");
 
+let tiktoken;
+try {
+  tiktoken = require("tiktoken-node");
+} catch (error) {
+  core.warning(
+    "tiktoken-node not available, falling back to character estimation"
+  );
+}
+
 // Default configuration
 const DEFAULT_CONFIG = {
   review_prompt: `ENHANCED CODE REVIEW PROMPT: Critical Analysis & Developer Assessment
@@ -31,7 +40,7 @@ ANTIPATTERN DETECTION - Flag and educate on:
 - Code duplication (repeated logic that should be abstracted)
 
 COMMENT STRATEGY: Only add comments for genuinely critical issues that will impact functionality, security, or long-term maintainability. Skip minor style preferences unless they create real problems.`,
-  max_comments: 8,
+  max_comments: 5,
   prioritize_by_severity: true,
   review_aspects: [
     "bugs",
@@ -40,8 +49,12 @@ COMMENT STRATEGY: Only add comments for genuinely critical issues that will impa
     "code_quality",
     "best_practices",
     "architecture_suggestions",
+    "code_organization",
+    "code_readability",
+    "code_maintainability",
   ],
   ignore_patterns: [],
+  allowed_users: [], // Empty array means allow all users
 };
 
 // Model pricing (per 1M tokens)
@@ -49,6 +62,61 @@ const MODEL_PRICING = {
   "claude-4": { input: 3.0, output: 15.0 },
   "claude-4-opus": { input: 15.0, output: 75.0 },
 };
+
+function getTokenEncoder(model) {
+  if (!tiktoken) return null;
+
+  try {
+    // Map AI models to tiktoken encodings
+    if (model.includes("claude-3") || model.includes("claude-4")) {
+      // Claude uses similar tokenization to GPT-4
+      return tiktoken.encodingForModel("gpt-4");
+    } else if (model.includes("gpt-4")) {
+      return tiktoken.encodingForModel("gpt-4");
+    } else if (model.includes("gpt-3.5")) {
+      return tiktoken.encodingForModel("gpt-3.5-turbo");
+    }
+    // Default to cl100k_base for modern models
+    return tiktoken.getEncoding("cl100k_base");
+  } catch (error) {
+    core.warning(`Failed to get encoder for ${model}: ${error.message}`);
+    return null;
+  }
+}
+
+function countTokens(text, model) {
+  const encoder = getTokenEncoder(model);
+
+  if (encoder) {
+    try {
+      return encoder.encode(text).length;
+    } catch (error) {
+      core.warning(
+        `Token counting failed, falling back to estimation: ${error.message}`
+      );
+    }
+  }
+
+  // Fallback to improved character estimation
+  // Different models have different character-to-token ratios
+  let avgCharsPerToken = 3.5; // Default for English
+
+  if (model.includes("claude")) {
+    avgCharsPerToken = 3.8; // Claude tends to have slightly longer tokens
+  } else if (model.includes("gpt-4")) {
+    avgCharsPerToken = 3.2; // GPT-4 is more efficient
+  }
+
+  return Math.ceil(text.length / avgCharsPerToken);
+}
+
+function calculateCost(model, tokens) {
+  const pricing = MODEL_PRICING[model] || MODEL_PRICING["claude-4"];
+  const inputCost = (tokens.input / 1000000) * pricing.input;
+  const outputCost = (tokens.output / 1000000) * pricing.output;
+  const totalCost = inputCost + outputCost;
+  return { inputCost, outputCost, totalCost, pricing };
+}
 
 async function run() {
   try {
@@ -74,6 +142,23 @@ async function run() {
     }
 
     const pr = context.payload.pull_request;
+
+    // Check if user is authorized to trigger reviews
+    if (config.allowed_users && config.allowed_users.length > 0) {
+      const prAuthor = pr.user.login;
+      if (!config.allowed_users.includes(prAuthor)) {
+        core.info(
+          `Review skipped: User ${prAuthor} is not in the allowed users list`
+        );
+        await octokit.rest.issues.createComment({
+          owner: context.repo.owner,
+          repo: context.repo.repo,
+          issue_number: pr.number,
+          body: `🔒 Automated review skipped: This repository only allows reviews from authorized users.`,
+        });
+        return;
+      }
+    }
 
     // Get PR diff
     const diff = await getPRDiff(octokit, context, pr, config);
@@ -227,7 +312,7 @@ ${chunk}
 Respond with ONLY a JSON array, no other text. Do not include explanations, thinking, or any text outside the JSON array. Start your response with [ and end with ].`;
 
   let response;
-  let inputTokens = Math.ceil(prompt.length / 3.5); // improved estimate for better accuracy
+  let inputTokens = countTokens(prompt, config.model);
   let outputTokens = 0;
 
   if (provider === "anthropic") {
@@ -238,7 +323,7 @@ Respond with ONLY a JSON array, no other text. Do not include explanations, thin
     throw new Error(`Unknown provider: ${provider}`);
   }
 
-  outputTokens = Math.ceil(response.length / 3.5); // improved estimate for better accuracy
+  outputTokens = countTokens(response, config.model);
 
   // Parse response
   let comments = [];
@@ -345,20 +430,16 @@ function processComments(comments, config) {
 }
 
 async function postReview(octokit, context, pr, comments, model, totalTokens) {
-  // Calculate cost
-  const pricing = MODEL_PRICING[model] || MODEL_PRICING["claude-4"];
-  const inputCost = (totalTokens.input / 1000000) * pricing.input;
-  const outputCost = (totalTokens.output / 1000000) * pricing.output;
-  const totalCost = inputCost + outputCost;
+  const { totalCost } = calculateCost(model, totalTokens);
 
-  let reviewBody = `🐰 bad-buggy review completed with ${comments.length} comments\n\n`;
+  let reviewBody = `bad-buggy review completed with ${comments.length} comments\n\n`;
   reviewBody += `**Review Cost:**\n`;
   reviewBody += `- Model: ${model}\n`;
   reviewBody += `- Total cost: ${totalCost.toFixed(4)}\n`;
   reviewBody += `- Tokens: ${totalTokens.input.toLocaleString()} input, ${totalTokens.output.toLocaleString()} output`;
 
   if (comments.length === 0) {
-    reviewBody = `🐰 bad-buggy found no issues! Great job! 🎉\n\n${reviewBody}`;
+    reviewBody = `bad-buggy found no issues! Great job! 🎉\n\n${reviewBody}`;
     await octokit.rest.issues.createComment({
       owner: context.repo.owner,
       repo: context.repo.repo,
@@ -413,10 +494,7 @@ async function postReview(octokit, context, pr, comments, model, totalTokens) {
 }
 
 function reportCost(model, tokens) {
-  const pricing = MODEL_PRICING[model] || MODEL_PRICING["claude-4"];
-  const inputCost = (tokens.input / 1000000) * pricing.input;
-  const outputCost = (tokens.output / 1000000) * pricing.output;
-  const totalCost = inputCost + outputCost;
+  const { totalCost } = calculateCost(model, tokens);
 
   core.info("=== Bad Buggy Cost Summary ===");
   core.info(`Model: ${model}`);

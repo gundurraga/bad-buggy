@@ -13,7 +13,7 @@ review_prompt: |
 
   Be helpful but also have fun with the inception aspect!
 
-max_comments: 8
+max_comments: 5
 prioritize_by_severity: true
 
 review_aspects:
@@ -29,3 +29,7 @@ ignore_patterns:
   - "dist/*"
   - "LICENSE"
   - ".gitignore"
+
+# Only allow reviews from these GitHub users (empty array = allow all)
+allowed_users:
+  - "gundurraga"

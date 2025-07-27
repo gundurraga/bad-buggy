@@ -27,28 +27,6 @@ function validateConfig(config) {
   // Validate review_aspects
   if (!Array.isArray(config.review_aspects)) {
     errors.push("review_aspects must be an array");
-  } else {
-    const validAspects = [
-      "bugs",
-      "security_vulnerabilities",
-      "performance_issues",
-      "code_quality",
-      "best_practices",
-      "architecture_suggestions",
-      "code_organization",
-      "code_readability",
-      "code_maintainability",
-    ];
-    const invalidAspects = config.review_aspects.filter(
-      (aspect) => !validAspects.includes(aspect)
-    );
-    if (invalidAspects.length > 0) {
-      errors.push(
-        `Invalid review aspects: ${invalidAspects.join(
-          ", "
-        )}. Valid aspects: ${validAspects.join(", ")}`
-      );
-    }
   }
 
   // Validate ignore_patterns

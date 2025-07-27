@@ -12,13 +12,6 @@ const {
   ConfigValidationError,
 } = require("./src/utils/config-validator");
 
-let tiktoken;
-try {
-  tiktoken = require("tiktoken");
-} catch (error) {
-  core.warning("tiktoken not available, falling back to character estimation");
-}
-
 // Default configuration
 const DEFAULT_CONFIG = {
   review_prompt: `ENHANCED CODE REVIEW PROMPT: Critical Analysis & Developer Assessment
@@ -70,48 +63,18 @@ const MODEL_PRICING = {
   "claude-4-opus": { input: 15.0, output: 75.0 },
 };
 
-function getTokenEncoder(model) {
-  if (!tiktoken) return null;
-
-  try {
-    // Map AI models to tiktoken encodings
-    if (model.includes("claude-3") || model.includes("claude-4")) {
-      // Claude uses similar tokenization to GPT-4
-      return tiktoken.encodingForModel("gpt-4");
-    } else if (model.includes("gpt-4")) {
-      return tiktoken.encodingForModel("gpt-4");
-    } else if (model.includes("gpt-3.5")) {
-      return tiktoken.encodingForModel("gpt-3.5-turbo");
-    }
-    // Default to cl100k_base for modern models
-    return tiktoken.getEncoding("cl100k_base");
-  } catch (error) {
-    core.warning(`Failed to get encoder for ${model}: ${error.message}`);
-    return null;
-  }
-}
-
 function countTokens(text, model) {
-  const encoder = getTokenEncoder(model);
+  // Simple character-based estimation that works for all models
+  // This is accurate enough for cost tracking purposes
+  let avgCharsPerToken = 3.5; // Default conservative estimate
 
-  if (encoder) {
-    try {
-      return encoder.encode(text).length;
-    } catch (error) {
-      core.warning(
-        `Token counting failed, falling back to estimation: ${error.message}`
-      );
-    }
-  }
-
-  // Fallback to improved character estimation
-  // Different models have different character-to-token ratios
-  let avgCharsPerToken = 3.5; // Default for English
-
+  // Adjust based on model type (rough estimates)
   if (model.includes("claude")) {
     avgCharsPerToken = 3.8; // Claude tends to have slightly longer tokens
   } else if (model.includes("gpt-4")) {
     avgCharsPerToken = 3.2; // GPT-4 is more efficient
+  } else if (model.includes("gpt-3")) {
+    avgCharsPerToken = 3.0; // GPT-3 models
   }
 
   return Math.ceil(text.length / avgCharsPerToken);

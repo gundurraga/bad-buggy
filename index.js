@@ -2,14 +2,21 @@ const core = require("@actions/core");
 const github = require("@actions/github");
 const yaml = require("js-yaml");
 const fs = require("fs");
+const {
+  callAIProvider,
+  AIProviderError,
+} = require("./src/providers/ai-providers");
+const {
+  validateConfig,
+  validateInputs,
+  ConfigValidationError,
+} = require("./src/utils/config-validator");
 
 let tiktoken;
 try {
-  tiktoken = require("tiktoken-node");
+  tiktoken = require("tiktoken");
 } catch (error) {
-  core.warning(
-    "tiktoken-node not available, falling back to character estimation"
-  );
+  core.warning("tiktoken not available, falling back to character estimation");
 }
 
 // Default configuration
@@ -128,9 +135,13 @@ async function run() {
     const configFile =
       core.getInput("config-file") || ".github/ai-review-config.yml";
 
-    // Load configuration
+    // Validate inputs
+    validateInputs({ githubToken, aiProvider, apiKey, model });
+
+    // Load and validate configuration
     const config = await loadConfig(configFile);
     config.model = model; // Override with input model
+    validateConfig(config);
 
     // Get PR information
     const octokit = github.getOctokit(githubToken);
@@ -193,7 +204,11 @@ async function run() {
     // Report cost (to console logs)
     reportCost(config.model, totalCost);
   } catch (error) {
-    core.setFailed(`Action failed: ${error.message}`);
+    if (error instanceof ConfigValidationError) {
+      core.setFailed(`Configuration error: ${error.message}`);
+    } else {
+      core.setFailed(`Action failed: ${error.message}`);
+    }
   }
 }
 
@@ -315,15 +330,15 @@ Respond with ONLY a JSON array, no other text. Do not include explanations, thin
   let inputTokens = countTokens(prompt, config.model);
   let outputTokens = 0;
 
-  if (provider === "anthropic") {
-    response = await callAnthropic(prompt, config.model, apiKey);
-  } else if (provider === "openrouter") {
-    response = await callOpenRouter(prompt, config.model, apiKey);
-  } else {
-    throw new Error(`Unknown provider: ${provider}`);
+  try {
+    response = await callAIProvider(provider, prompt, config.model, apiKey);
+    outputTokens = countTokens(response, config.model);
+  } catch (error) {
+    if (error instanceof AIProviderError) {
+      throw new Error(`${error.provider} provider error: ${error.message}`);
+    }
+    throw error;
   }
-
-  outputTokens = countTokens(response, config.model);
 
   // Parse response
   let comments = [];
@@ -350,63 +365,6 @@ Respond with ONLY a JSON array, no other text. Do not include explanations, thin
   }
 
   return { comments, inputTokens, outputTokens };
-}
-
-async function callAnthropic(prompt, model, apiKey) {
-  if (!apiKey) {
-    throw new Error("Anthropic API key is required");
-  }
-
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: model,
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 4000,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Anthropic API error: ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  return data.content[0].text;
-}
-
-async function callOpenRouter(prompt, model, apiKey) {
-  if (!apiKey) {
-    throw new Error("OpenRouter API key is required");
-  }
-
-  const response = await fetch(
-    "https://openrouter.ai/api/v1/chat/completions",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-        "HTTP-Referer": "https://github.com/gundurraga/bad-buggy",
-        "X-Title": "bad-buggy",
-      },
-      body: JSON.stringify({
-        model: model,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(`OpenRouter API error: ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  return data.choices[0].message.content;
 }
 
 function processComments(comments, config) {

@@ -36660,10 +36660,256 @@ function wrappy (fn, cb) {
 
 /***/ }),
 
+/***/ 1269:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+const core = __nccwpck_require__(2186);
+
+class AIProviderError extends Error {
+  constructor(message, provider, status) {
+    super(message);
+    this.name = "AIProviderError";
+    this.provider = provider;
+    this.status = status;
+  }
+}
+
+async function callAnthropic(prompt, model, apiKey) {
+  if (!apiKey) {
+    throw new AIProviderError("Anthropic API key is required", "anthropic");
+  }
+
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: model,
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: 4000,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new AIProviderError(
+      `Anthropic API error: ${response.statusText}`,
+      "anthropic",
+      response.status
+    );
+  }
+
+  const data = await response.json();
+  return data.content[0].text;
+}
+
+async function callOpenRouter(prompt, model, apiKey) {
+  if (!apiKey) {
+    throw new AIProviderError("OpenRouter API key is required", "openrouter");
+  }
+
+  const response = await fetch(
+    "https://openrouter.ai/api/v1/chat/completions",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+        "HTTP-Referer": "https://github.com/gundurraga/bad-buggy",
+        "X-Title": "bad-buggy",
+      },
+      body: JSON.stringify({
+        model: model,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    throw new AIProviderError(
+      `OpenRouter API error: ${response.statusText}`,
+      "openrouter",
+      response.status
+    );
+  }
+
+  const data = await response.json();
+  return data.choices[0].message.content;
+}
+
+async function callAIProvider(provider, prompt, model, apiKey) {
+  try {
+    switch (provider) {
+      case "anthropic":
+        return await callAnthropic(prompt, model, apiKey);
+      case "openrouter":
+        return await callOpenRouter(prompt, model, apiKey);
+      default:
+        throw new AIProviderError(`Unknown provider: ${provider}`, provider);
+    }
+  } catch (error) {
+    if (error instanceof AIProviderError) {
+      throw error;
+    }
+    throw new AIProviderError(
+      `Provider call failed: ${error.message}`,
+      provider
+    );
+  }
+}
+
+module.exports = {
+  callAIProvider,
+  AIProviderError,
+};
+
+
+/***/ }),
+
+/***/ 2936:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+const core = __nccwpck_require__(2186);
+
+class ConfigValidationError extends Error {
+  constructor(message, field) {
+    super(message);
+    this.name = "ConfigValidationError";
+    this.field = field;
+  }
+}
+
+function validateConfig(config) {
+  const errors = [];
+
+  // Validate required fields
+  if (!config.review_prompt || typeof config.review_prompt !== "string") {
+    errors.push("review_prompt must be a non-empty string");
+  }
+
+  if (typeof config.max_comments !== "number" || config.max_comments < 1) {
+    errors.push("max_comments must be a positive number");
+  }
+
+  if (typeof config.prioritize_by_severity !== "boolean") {
+    errors.push("prioritize_by_severity must be a boolean");
+  }
+
+  // Validate review_aspects
+  if (!Array.isArray(config.review_aspects)) {
+    errors.push("review_aspects must be an array");
+  } else {
+    const validAspects = [
+      "bugs",
+      "security_vulnerabilities",
+      "performance_issues",
+      "code_quality",
+      "best_practices",
+      "architecture_suggestions",
+      "code_organization",
+      "code_readability",
+      "code_maintainability",
+    ];
+    const invalidAspects = config.review_aspects.filter(
+      (aspect) => !validAspects.includes(aspect)
+    );
+    if (invalidAspects.length > 0) {
+      errors.push(
+        `Invalid review aspects: ${invalidAspects.join(
+          ", "
+        )}. Valid aspects: ${validAspects.join(", ")}`
+      );
+    }
+  }
+
+  // Validate ignore_patterns
+  if (!Array.isArray(config.ignore_patterns)) {
+    errors.push("ignore_patterns must be an array");
+  }
+
+  // Validate allowed_users
+  if (!Array.isArray(config.allowed_users)) {
+    errors.push("allowed_users must be an array");
+  }
+
+  // Validate ranges
+  if (config.max_comments > 20) {
+    core.warning(
+      "max_comments is very high (>20), this may result in high costs"
+    );
+  }
+
+  if (config.review_prompt.length > 10000) {
+    core.warning(
+      "review_prompt is very long (>10k chars), this may result in high token costs"
+    );
+  }
+
+  if (errors.length > 0) {
+    throw new ConfigValidationError(
+      `Configuration validation failed:\n${errors.join("\n")}`,
+      "config"
+    );
+  }
+
+  return config;
+}
+
+function validateInputs(inputs) {
+  const { githubToken, aiProvider, apiKey, model } = inputs;
+  const errors = [];
+
+  if (!githubToken) {
+    errors.push("github-token is required");
+  }
+
+  if (!aiProvider) {
+    errors.push("ai-provider is required");
+  } else if (!["anthropic", "openrouter"].includes(aiProvider)) {
+    errors.push("ai-provider must be 'anthropic' or 'openrouter'");
+  }
+
+  if (!apiKey) {
+    errors.push("api-key is required");
+  }
+
+  if (!model) {
+    errors.push("model is required");
+  }
+
+  if (errors.length > 0) {
+    throw new ConfigValidationError(
+      `Input validation failed:\n${errors.join("\n")}`,
+      "inputs"
+    );
+  }
+
+  return inputs;
+}
+
+module.exports = {
+  validateConfig,
+  validateInputs,
+  ConfigValidationError,
+};
+
+
+/***/ }),
+
 /***/ 2877:
 /***/ ((module) => {
 
 module.exports = eval("require")("encoding");
+
+
+/***/ }),
+
+/***/ 6977:
+/***/ ((module) => {
+
+module.exports = eval("require")("tiktoken");
 
 
 /***/ }),
@@ -38602,6 +38848,22 @@ const core = __nccwpck_require__(2186);
 const github = __nccwpck_require__(5438);
 const yaml = __nccwpck_require__(1917);
 const fs = __nccwpck_require__(7147);
+const {
+  callAIProvider,
+  AIProviderError,
+} = __nccwpck_require__(1269);
+const {
+  validateConfig,
+  validateInputs,
+  ConfigValidationError,
+} = __nccwpck_require__(2936);
+
+let tiktoken;
+try {
+  tiktoken = __nccwpck_require__(6977);
+} catch (error) {
+  core.warning("tiktoken not available, falling back to character estimation");
+}
 
 // Default configuration
 const DEFAULT_CONFIG = {
@@ -38631,7 +38893,7 @@ ANTIPATTERN DETECTION - Flag and educate on:
 - Code duplication (repeated logic that should be abstracted)
 
 COMMENT STRATEGY: Only add comments for genuinely critical issues that will impact functionality, security, or long-term maintainability. Skip minor style preferences unless they create real problems.`,
-  max_comments: 8,
+  max_comments: 5,
   prioritize_by_severity: true,
   review_aspects: [
     "bugs",
@@ -38640,8 +38902,12 @@ COMMENT STRATEGY: Only add comments for genuinely critical issues that will impa
     "code_quality",
     "best_practices",
     "architecture_suggestions",
+    "code_organization",
+    "code_readability",
+    "code_maintainability",
   ],
   ignore_patterns: [],
+  allowed_users: [], // Empty array means allow all users
 };
 
 // Model pricing (per 1M tokens)
@@ -38649,6 +38915,61 @@ const MODEL_PRICING = {
   "claude-4": { input: 3.0, output: 15.0 },
   "claude-4-opus": { input: 15.0, output: 75.0 },
 };
+
+function getTokenEncoder(model) {
+  if (!tiktoken) return null;
+
+  try {
+    // Map AI models to tiktoken encodings
+    if (model.includes("claude-3") || model.includes("claude-4")) {
+      // Claude uses similar tokenization to GPT-4
+      return tiktoken.encodingForModel("gpt-4");
+    } else if (model.includes("gpt-4")) {
+      return tiktoken.encodingForModel("gpt-4");
+    } else if (model.includes("gpt-3.5")) {
+      return tiktoken.encodingForModel("gpt-3.5-turbo");
+    }
+    // Default to cl100k_base for modern models
+    return tiktoken.getEncoding("cl100k_base");
+  } catch (error) {
+    core.warning(`Failed to get encoder for ${model}: ${error.message}`);
+    return null;
+  }
+}
+
+function countTokens(text, model) {
+  const encoder = getTokenEncoder(model);
+
+  if (encoder) {
+    try {
+      return encoder.encode(text).length;
+    } catch (error) {
+      core.warning(
+        `Token counting failed, falling back to estimation: ${error.message}`
+      );
+    }
+  }
+
+  // Fallback to improved character estimation
+  // Different models have different character-to-token ratios
+  let avgCharsPerToken = 3.5; // Default for English
+
+  if (model.includes("claude")) {
+    avgCharsPerToken = 3.8; // Claude tends to have slightly longer tokens
+  } else if (model.includes("gpt-4")) {
+    avgCharsPerToken = 3.2; // GPT-4 is more efficient
+  }
+
+  return Math.ceil(text.length / avgCharsPerToken);
+}
+
+function calculateCost(model, tokens) {
+  const pricing = MODEL_PRICING[model] || MODEL_PRICING["claude-4"];
+  const inputCost = (tokens.input / 1000000) * pricing.input;
+  const outputCost = (tokens.output / 1000000) * pricing.output;
+  const totalCost = inputCost + outputCost;
+  return { inputCost, outputCost, totalCost, pricing };
+}
 
 async function run() {
   try {
@@ -38660,9 +38981,13 @@ async function run() {
     const configFile =
       core.getInput("config-file") || ".github/ai-review-config.yml";
 
-    // Load configuration
+    // Validate inputs
+    validateInputs({ githubToken, aiProvider, apiKey, model });
+
+    // Load and validate configuration
     const config = await loadConfig(configFile);
     config.model = model; // Override with input model
+    validateConfig(config);
 
     // Get PR information
     const octokit = github.getOctokit(githubToken);
@@ -38674,6 +38999,23 @@ async function run() {
     }
 
     const pr = context.payload.pull_request;
+
+    // Check if user is authorized to trigger reviews
+    if (config.allowed_users && config.allowed_users.length > 0) {
+      const prAuthor = pr.user.login;
+      if (!config.allowed_users.includes(prAuthor)) {
+        core.info(
+          `Review skipped: User ${prAuthor} is not in the allowed users list`
+        );
+        await octokit.rest.issues.createComment({
+          owner: context.repo.owner,
+          repo: context.repo.repo,
+          issue_number: pr.number,
+          body: `🔒 Automated review skipped: This repository only allows reviews from authorized users.`,
+        });
+        return;
+      }
+    }
 
     // Get PR diff
     const diff = await getPRDiff(octokit, context, pr, config);
@@ -38708,7 +39050,11 @@ async function run() {
     // Report cost (to console logs)
     reportCost(config.model, totalCost);
   } catch (error) {
-    core.setFailed(`Action failed: ${error.message}`);
+    if (error instanceof ConfigValidationError) {
+      core.setFailed(`Configuration error: ${error.message}`);
+    } else {
+      core.setFailed(`Action failed: ${error.message}`);
+    }
   }
 }
 
@@ -38827,18 +39173,18 @@ ${chunk}
 Respond with ONLY a JSON array, no other text. Do not include explanations, thinking, or any text outside the JSON array. Start your response with [ and end with ].`;
 
   let response;
-  let inputTokens = Math.ceil(prompt.length / 3.5); // improved estimate for better accuracy
+  let inputTokens = countTokens(prompt, config.model);
   let outputTokens = 0;
 
-  if (provider === "anthropic") {
-    response = await callAnthropic(prompt, config.model, apiKey);
-  } else if (provider === "openrouter") {
-    response = await callOpenRouter(prompt, config.model, apiKey);
-  } else {
-    throw new Error(`Unknown provider: ${provider}`);
+  try {
+    response = await callAIProvider(provider, prompt, config.model, apiKey);
+    outputTokens = countTokens(response, config.model);
+  } catch (error) {
+    if (error instanceof AIProviderError) {
+      throw new Error(`${error.provider} provider error: ${error.message}`);
+    }
+    throw error;
   }
-
-  outputTokens = Math.ceil(response.length / 3.5); // improved estimate for better accuracy
 
   // Parse response
   let comments = [];
@@ -38867,63 +39213,6 @@ Respond with ONLY a JSON array, no other text. Do not include explanations, thin
   return { comments, inputTokens, outputTokens };
 }
 
-async function callAnthropic(prompt, model, apiKey) {
-  if (!apiKey) {
-    throw new Error("Anthropic API key is required");
-  }
-
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: model,
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 4000,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Anthropic API error: ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  return data.content[0].text;
-}
-
-async function callOpenRouter(prompt, model, apiKey) {
-  if (!apiKey) {
-    throw new Error("OpenRouter API key is required");
-  }
-
-  const response = await fetch(
-    "https://openrouter.ai/api/v1/chat/completions",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-        "HTTP-Referer": "https://github.com/gundurraga/bad-buggy",
-        "X-Title": "bad-buggy",
-      },
-      body: JSON.stringify({
-        model: model,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(`OpenRouter API error: ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  return data.choices[0].message.content;
-}
-
 function processComments(comments, config) {
   // Remove duplicates
   const unique = comments.filter(
@@ -38945,20 +39234,16 @@ function processComments(comments, config) {
 }
 
 async function postReview(octokit, context, pr, comments, model, totalTokens) {
-  // Calculate cost
-  const pricing = MODEL_PRICING[model] || MODEL_PRICING["claude-4"];
-  const inputCost = (totalTokens.input / 1000000) * pricing.input;
-  const outputCost = (totalTokens.output / 1000000) * pricing.output;
-  const totalCost = inputCost + outputCost;
+  const { totalCost } = calculateCost(model, totalTokens);
 
-  let reviewBody = `🐰 bad-buggy review completed with ${comments.length} comments\n\n`;
+  let reviewBody = `bad-buggy review completed with ${comments.length} comments\n\n`;
   reviewBody += `**Review Cost:**\n`;
   reviewBody += `- Model: ${model}\n`;
   reviewBody += `- Total cost: ${totalCost.toFixed(4)}\n`;
   reviewBody += `- Tokens: ${totalTokens.input.toLocaleString()} input, ${totalTokens.output.toLocaleString()} output`;
 
   if (comments.length === 0) {
-    reviewBody = `🐰 bad-buggy found no issues! Great job! 🎉\n\n${reviewBody}`;
+    reviewBody = `bad-buggy found no issues! Great job! 🎉\n\n${reviewBody}`;
     await octokit.rest.issues.createComment({
       owner: context.repo.owner,
       repo: context.repo.repo,
@@ -39013,10 +39298,7 @@ async function postReview(octokit, context, pr, comments, model, totalTokens) {
 }
 
 function reportCost(model, tokens) {
-  const pricing = MODEL_PRICING[model] || MODEL_PRICING["claude-4"];
-  const inputCost = (tokens.input / 1000000) * pricing.input;
-  const outputCost = (tokens.output / 1000000) * pricing.output;
-  const totalCost = inputCost + outputCost;
+  const { totalCost } = calculateCost(model, tokens);
 
   core.info("=== Bad Buggy Cost Summary ===");
   core.info(`Model: ${model}`);

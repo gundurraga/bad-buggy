@@ -12,6 +12,7 @@ const {
   ConfigValidationError,
 } = require("./src/utils/config-validator");
 const { DEFAULT_CONFIG } = require("./src/config/default-config");
+const { performSecurityCheck } = require("./src/security/access-control");
 
 // Model pricing (per 1M tokens)
 const MODEL_PRICING = {
@@ -73,21 +74,22 @@ async function run() {
 
     const pr = context.payload.pull_request;
 
-    // Check if user is authorized to trigger reviews
-    if (config.allowed_users && config.allowed_users.length > 0) {
-      const triggeringUser = context.actor; // User who triggered the workflow
-      if (!config.allowed_users.includes(triggeringUser)) {
-        core.info(
-          `Review skipped: User ${triggeringUser} is not in the allowed users list`
-        );
-        await octokit.rest.issues.createComment({
-          owner: context.repo.owner,
-          repo: context.repo.repo,
-          issue_number: pr.number,
-          body: `🔒 Automated review skipped: This repository only allows reviews from authorized users.`,
-        });
-        return;
-      }
+    // COMPREHENSIVE SECURITY CHECK for public repositories
+    const securityCheck = await performSecurityCheck(
+      octokit,
+      context,
+      pr,
+      config
+    );
+    if (!securityCheck.allowed) {
+      core.info(`Review skipped: ${securityCheck.reason}`);
+      await octokit.rest.issues.createComment({
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+        issue_number: pr.number,
+        body: `🔒 ${securityCheck.message}`,
+      });
+      return;
     }
 
     // Get PR diff
@@ -309,10 +311,12 @@ function processComments(comments, config) {
 async function postReview(octokit, context, pr, comments, model, totalTokens) {
   const { totalCost } = calculateCost(model, totalTokens);
 
-  let reviewBody = `bad-buggy review completed with ${comments.length} comments\n\n`;
+  let reviewBody = `Bad Buggy review completed with ${comments.length} comments\n\n`;
   reviewBody += `**Review Cost:**\n`;
   reviewBody += `- Model: ${model}\n`;
-  reviewBody += `- Total cost: $${totalCost.toFixed(4)}\n`;
+  reviewBody += `- Total cost: $${totalCost.toFixed(4)}\n (equal to ${
+    1 / totalCost
+  } reviews per dollar)`;
   reviewBody += `- Tokens: ${totalTokens.input.toLocaleString()} input, ${totalTokens.output.toLocaleString()} output`;
 
   if (comments.length === 0) {

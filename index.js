@@ -2,53 +2,48 @@ const core = require("@actions/core");
 const github = require("@actions/github");
 const yaml = require("js-yaml");
 const fs = require("fs");
-
-// Default configuration
-const DEFAULT_CONFIG = {
-  review_prompt: `ENHANCED CODE REVIEW PROMPT: Critical Analysis & Developer Assessment
-
-CONTEXT: Today is {{DATE}}. Review with current best practices in mind.
-
-MANDATORY FIRST STEP - IDENTIFY MOST CRITICAL ISSUE:
-Priority 1: Functional failures (broken core functionality, data corruption risks, critical security vulnerabilities, memory leaks)
-Priority 2: System stability (poor error handling, race conditions, performance bottlenecks)  
-Priority 3: Maintainability blockers (architectural violations, tight coupling, code duplication)
-
-Output format: "MOST CRITICAL ISSUE: [Category] - [Description]. IMPACT: [What breaks if unfixed]. IMMEDIATE ACTION: [Specific fix needed]."
-
-EVALUATION FRAMEWORK:
-- Functional Correctness: Requirements met, edge cases handled, input validation, boundary conditions
-- Technical Implementation: Algorithm efficiency, architecture decisions, technology usage appropriately
-- Code Quality: Readability (clear naming, formatting), documentation (explains why not just what), comprehensive error handling
-- Testing & Reliability: Unit/integration tests, edge case coverage, proper mocking
-- Security & Safety: Input sanitization, authentication checks, no hardcoded secrets
-
-ANTIPATTERN DETECTION - Flag and educate on:
-- God objects/functions (200+ line functions doing everything)
-- Magic numbers/strings (use constants with descriptive names)
-- Poor error handling (silent failures, swallowing exceptions)
-- Tight coupling (changes requiring modifications across unrelated modules)
-- Code duplication (repeated logic that should be abstracted)
-
-COMMENT STRATEGY: Only add comments for genuinely critical issues that will impact functionality, security, or long-term maintainability. Skip minor style preferences unless they create real problems.`,
-  max_comments: 8,
-  prioritize_by_severity: true,
-  review_aspects: [
-    "bugs",
-    "security_vulnerabilities",
-    "performance_issues",
-    "code_quality",
-    "best_practices",
-    "architecture_suggestions",
-  ],
-  ignore_patterns: [],
-};
+const {
+  callAIProvider,
+  AIProviderError,
+} = require("./src/providers/ai-providers");
+const {
+  validateConfig,
+  validateInputs,
+  ConfigValidationError,
+} = require("./src/utils/config-validator");
+const { DEFAULT_CONFIG } = require("./src/config/default-config");
+const { performSecurityCheck } = require("./src/security/access-control");
 
 // Model pricing (per 1M tokens)
 const MODEL_PRICING = {
   "claude-4": { input: 3.0, output: 15.0 },
   "claude-4-opus": { input: 15.0, output: 75.0 },
 };
+
+function countTokens(text, model) {
+  // Simple character-based estimation that works for all models
+  // This is accurate enough for cost tracking purposes
+  let avgCharsPerToken = 3.5; // Default conservative estimate
+
+  // Adjust based on model type (rough estimates)
+  if (model.includes("claude")) {
+    avgCharsPerToken = 3.8; // Claude tends to have slightly longer tokens
+  } else if (model.includes("gpt-4")) {
+    avgCharsPerToken = 3.2; // GPT-4 is more efficient
+  } else if (model.includes("gpt-3")) {
+    avgCharsPerToken = 3.0; // GPT-3 models
+  }
+
+  return Math.ceil(text.length / avgCharsPerToken);
+}
+
+function calculateCost(model, tokens) {
+  const pricing = MODEL_PRICING[model] || MODEL_PRICING["claude-4"];
+  const inputCost = (tokens.input / 1000000) * pricing.input;
+  const outputCost = (tokens.output / 1000000) * pricing.output;
+  const totalCost = inputCost + outputCost;
+  return { inputCost, outputCost, totalCost, pricing };
+}
 
 async function run() {
   try {
@@ -60,9 +55,13 @@ async function run() {
     const configFile =
       core.getInput("config-file") || ".github/ai-review-config.yml";
 
-    // Load configuration
+    // Validate inputs
+    validateInputs({ githubToken, aiProvider, apiKey, model });
+
+    // Load and validate configuration
     const config = await loadConfig(configFile);
     config.model = model; // Override with input model
+    validateConfig(config);
 
     // Get PR information
     const octokit = github.getOctokit(githubToken);
@@ -74,6 +73,24 @@ async function run() {
     }
 
     const pr = context.payload.pull_request;
+
+    // COMPREHENSIVE SECURITY CHECK for public repositories
+    const securityCheck = await performSecurityCheck(
+      octokit,
+      context,
+      pr,
+      config
+    );
+    if (!securityCheck.allowed) {
+      core.info(`Review skipped: ${securityCheck.reason}`);
+      await octokit.rest.issues.createComment({
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+        issue_number: pr.number,
+        body: `🔒 ${securityCheck.message}`,
+      });
+      return;
+    }
 
     // Get PR diff
     const diff = await getPRDiff(octokit, context, pr, config);
@@ -108,7 +125,11 @@ async function run() {
     // Report cost (to console logs)
     reportCost(config.model, totalCost);
   } catch (error) {
-    core.setFailed(`Action failed: ${error.message}`);
+    if (error instanceof ConfigValidationError) {
+      core.setFailed(`Configuration error: ${error.message}`);
+    } else {
+      core.setFailed(`Action failed: ${error.message}`);
+    }
   }
 }
 
@@ -227,18 +248,18 @@ ${chunk}
 Respond with ONLY a JSON array, no other text. Do not include explanations, thinking, or any text outside the JSON array. Start your response with [ and end with ].`;
 
   let response;
-  let inputTokens = Math.ceil(prompt.length / 3.5); // improved estimate for better accuracy
+  let inputTokens = countTokens(prompt, config.model);
   let outputTokens = 0;
 
-  if (provider === "anthropic") {
-    response = await callAnthropic(prompt, config.model, apiKey);
-  } else if (provider === "openrouter") {
-    response = await callOpenRouter(prompt, config.model, apiKey);
-  } else {
-    throw new Error(`Unknown provider: ${provider}`);
+  try {
+    response = await callAIProvider(provider, prompt, config.model, apiKey);
+    outputTokens = countTokens(response, config.model);
+  } catch (error) {
+    if (error instanceof AIProviderError) {
+      throw new Error(`${error.provider} provider error: ${error.message}`);
+    }
+    throw error;
   }
-
-  outputTokens = Math.ceil(response.length / 3.5); // improved estimate for better accuracy
 
   // Parse response
   let comments = [];
@@ -267,63 +288,6 @@ Respond with ONLY a JSON array, no other text. Do not include explanations, thin
   return { comments, inputTokens, outputTokens };
 }
 
-async function callAnthropic(prompt, model, apiKey) {
-  if (!apiKey) {
-    throw new Error("Anthropic API key is required");
-  }
-
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: model,
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 4000,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Anthropic API error: ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  return data.content[0].text;
-}
-
-async function callOpenRouter(prompt, model, apiKey) {
-  if (!apiKey) {
-    throw new Error("OpenRouter API key is required");
-  }
-
-  const response = await fetch(
-    "https://openrouter.ai/api/v1/chat/completions",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-        "HTTP-Referer": "https://github.com/gundurraga/bad-buggy",
-        "X-Title": "bad-buggy",
-      },
-      body: JSON.stringify({
-        model: model,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(`OpenRouter API error: ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  return data.choices[0].message.content;
-}
-
 function processComments(comments, config) {
   // Remove duplicates
   const unique = comments.filter(
@@ -345,20 +309,18 @@ function processComments(comments, config) {
 }
 
 async function postReview(octokit, context, pr, comments, model, totalTokens) {
-  // Calculate cost
-  const pricing = MODEL_PRICING[model] || MODEL_PRICING["claude-4"];
-  const inputCost = (totalTokens.input / 1000000) * pricing.input;
-  const outputCost = (totalTokens.output / 1000000) * pricing.output;
-  const totalCost = inputCost + outputCost;
+  const { totalCost } = calculateCost(model, totalTokens);
 
-  let reviewBody = `🐰 bad-buggy review completed with ${comments.length} comments\n\n`;
+  let reviewBody = `Bad Buggy review completed with ${comments.length} comments\n\n`;
   reviewBody += `**Review Cost:**\n`;
   reviewBody += `- Model: ${model}\n`;
-  reviewBody += `- Total cost: ${totalCost.toFixed(4)}\n`;
+  reviewBody += `- Total cost: $${totalCost.toFixed(4)} (equal to ${Math.round(
+    1 / totalCost
+  )} reviews per dollar)\n`;
   reviewBody += `- Tokens: ${totalTokens.input.toLocaleString()} input, ${totalTokens.output.toLocaleString()} output`;
 
   if (comments.length === 0) {
-    reviewBody = `🐰 bad-buggy found no issues! Great job! 🎉\n\n${reviewBody}`;
+    reviewBody = `bad-buggy found no issues! Great job! 🎉\n\n${reviewBody}`;
     await octokit.rest.issues.createComment({
       owner: context.repo.owner,
       repo: context.repo.repo,
@@ -413,10 +375,7 @@ async function postReview(octokit, context, pr, comments, model, totalTokens) {
 }
 
 function reportCost(model, tokens) {
-  const pricing = MODEL_PRICING[model] || MODEL_PRICING["claude-4"];
-  const inputCost = (tokens.input / 1000000) * pricing.input;
-  const outputCost = (tokens.output / 1000000) * pricing.output;
-  const totalCost = inputCost + outputCost;
+  const { totalCost } = calculateCost(model, tokens);
 
   core.info("=== Bad Buggy Cost Summary ===");
   core.info(`Model: ${model}`);

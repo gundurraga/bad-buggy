@@ -1,5 +1,3 @@
-# bad-buggy reviews itself!
-
 review_prompt: |
   You are reviewing bad-buggy - an AI code review GitHub Action.
   This is meta: an AI reviewer reviewing an AI reviewer!
@@ -13,7 +11,7 @@ review_prompt: |
 
   Be helpful but also have fun with the inception aspect!
 
-max_comments: 8
+max_comments: 5
 prioritize_by_severity: true
 
 review_aspects:
@@ -29,3 +27,14 @@ ignore_patterns:
   - "dist/*"
   - "LICENSE"
   - ".gitignore"
+
+# Security configuration for AI reviews
+# OPTION 1: Allow all repository collaborators with write access (recommended)
+# allowed_users: []
+
+# OPTION 2: Restrict to specific users (higher security, more maintenance)
+allowed_users:
+  - "gundurraga"
+# OPTION 3: Environment-based (for organizations)
+# Set ALLOWED_USERS_ENV in repository secrets: "user1,user2,user3"
+# allowed_users_env: "ALLOWED_USERS_ENV"

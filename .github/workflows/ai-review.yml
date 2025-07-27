@@ -1,4 +1,4 @@
-name: Bad Buggy
+name: Bad Buggy reviews itself
 
 on:
   pull_request:
@@ -17,7 +17,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: bad-buggy reviews itself
+      - name: Bad Buggy
         uses: gundurraga/bad-buggy@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}

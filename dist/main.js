@@ -72,11 +72,11 @@ const run = async () => {
         const { pr, triggeringUser, repoOwner } = await workflow.validatePullRequest();
         const modifiedFiles = await workflow.performSecurityChecks(pr, triggeringUser, repoOwner);
         await workflow.checkUserPermissions(triggeringUser, repoOwner);
-        const { comments, tokens } = await workflow.processAndReviewDiff();
+        const { comments, tokens, fileChanges } = await workflow.processAndReviewDiff();
         if (comments.length === 0 && tokens.input === 0) {
             return; // No files to review
         }
-        await workflow.processAndPostComments(comments, tokens, modifiedFiles, pr, triggeringUser);
+        await workflow.processAndPostComments(comments, tokens, modifiedFiles, pr, triggeringUser, fileChanges);
         await workflow.reportCosts(tokens);
         logger_1.Logger.completion();
     }

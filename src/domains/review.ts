@@ -31,7 +31,7 @@ export const shouldIgnoreFile = (filename: string, config: ReviewConfig): boolea
 export const chunkDiff = (diff: FileChange[], config: ReviewConfig): DiffChunk[] => {
   const chunks: DiffChunk[] = [];
   let currentChunk: DiffChunk = { content: '', files: [], size: 0 };
-  const maxChunkSize = 8000; // Conservative limit for API calls
+  const maxChunkSize = 50000; // Optimized for Claude 4 Sonnet's large context window
 
   for (const file of diff) {
     if (shouldIgnoreFile(file.filename, config)) {
@@ -66,7 +66,7 @@ export const processComments = (comments: ReviewComment[], config: ReviewConfig)
   const sortedComments = [...comments];
   
   if (config.prioritize_by_severity) {
-    const severityOrder = { critical: 0, major: 1, minor: 2, info: 3 };
+    const severityOrder = { critical: 0, major: 1, suggestion: 2 };
     sortedComments.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
   }
 

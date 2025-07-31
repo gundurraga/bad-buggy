@@ -1,5 +1,5 @@
 import * as github from '@actions/github';
-import { ActionInputs, ReviewConfig, TokenUsage, ReviewComment, PullRequest, User } from '../types';
+import { ActionInputs, ReviewConfig, TokenUsage, ReviewComment, PullRequest, User, FileChange } from '../types';
 /**
  * Workflow orchestrator for the AI code review process
  */
@@ -21,8 +21,9 @@ export declare class ReviewWorkflow {
     processAndReviewDiff(): Promise<{
         comments: ReviewComment[];
         tokens: TokenUsage;
+        fileChanges: FileChange[];
     }>;
-    processAndPostComments(allComments: ReviewComment[], totalTokens: TokenUsage, modifiedFiles: string[], pr: PullRequest, triggeringUser: User): Promise<void>;
+    processAndPostComments(allComments: ReviewComment[], totalTokens: TokenUsage, modifiedFiles: string[], pr: PullRequest, triggeringUser: User, fileChanges: FileChange[]): Promise<void>;
     reportCosts(totalTokens: TokenUsage): Promise<void>;
 }
 //# sourceMappingURL=workflow.d.ts.map

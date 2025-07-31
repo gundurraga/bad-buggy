@@ -225,7 +225,7 @@ exports.shouldIgnoreFile = shouldIgnoreFile;
 const chunkDiff = (diff, config) => {
     const chunks = [];
     let currentChunk = { content: '', files: [], size: 0 };
-    const maxChunkSize = 8000; // Conservative limit for API calls
+    const maxChunkSize = 50000; // Optimized for Claude 4 Sonnet's large context window
     for (const file of diff) {
         if ((0, exports.shouldIgnoreFile)(file.filename, config)) {
             continue;
@@ -253,7 +253,7 @@ const processComments = (comments, config) => {
     // Parse and sort comments
     const sortedComments = [...comments];
     if (config.prioritize_by_severity) {
-        const severityOrder = { critical: 0, major: 1, minor: 2, info: 3 };
+        const severityOrder = { critical: 0, major: 1, suggestion: 2 };
         sortedComments.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
     }
     // Limit to max_comments
@@ -519,8 +519,62 @@ const checkUserPermissions = async (octokit, owner, repo, username) => {
 };
 exports.checkUserPermissions = checkUserPermissions;
 // Effect: Post review to GitHub
-const postReview = async (octokit, context, pr, comments, body) => {
-    const reviewComments = comments.map(comment => ({
+// Helper function to extract valid line numbers from patch
+const getValidLinesFromPatch = (patch) => {
+    const validLines = new Set();
+    if (!patch)
+        return validLines;
+    const lines = patch.split('\n');
+    let currentLine = 0;
+    for (const line of lines) {
+        // Parse hunk headers like @@ -1,4 +1,6 @@
+        const hunkMatch = line.match(/^@@ -\d+,?\d* \+(\d+),?\d* @@/);
+        if (hunkMatch) {
+            currentLine = parseInt(hunkMatch[1], 10);
+            continue;
+        }
+        // Skip context lines (start with space) and deleted lines (start with -)
+        if (line.startsWith(' ') || line.startsWith('+')) {
+            if (currentLine > 0) {
+                validLines.add(currentLine);
+            }
+        }
+        // Increment line number for context and added lines
+        if (line.startsWith(' ') || line.startsWith('+')) {
+            currentLine++;
+        }
+    }
+    return validLines;
+};
+// Helper function to validate comments against diff
+const validateCommentsAgainstDiff = (comments, fileChanges) => {
+    const fileValidLines = new Map();
+    // Build map of valid lines for each file
+    for (const file of fileChanges) {
+        if (file.patch) {
+            fileValidLines.set(file.filename, getValidLinesFromPatch(file.patch));
+        }
+    }
+    // Filter comments to only include those on valid lines
+    return comments.filter(comment => {
+        const validLines = fileValidLines.get(comment.path);
+        if (!validLines || validLines.size === 0) {
+            return false; // No valid lines for this file
+        }
+        return validLines.has(comment.line);
+    });
+};
+const postReview = async (octokit, context, pr, comments, body, fileChanges) => {
+    let validatedComments = comments;
+    // Validate comments against diff if file changes are provided
+    if (fileChanges) {
+        validatedComments = validateCommentsAgainstDiff(comments, fileChanges);
+        if (validatedComments.length < comments.length) {
+            const filteredCount = comments.length - validatedComments.length;
+            console.log(`Filtered out ${filteredCount} comments that referenced invalid diff lines`);
+        }
+    }
+    const reviewComments = validatedComments.map(comment => ({
         path: comment.path,
         line: comment.line,
         body: comment.body
@@ -617,11 +671,11 @@ const run = async () => {
         const { pr, triggeringUser, repoOwner } = await workflow.validatePullRequest();
         const modifiedFiles = await workflow.performSecurityChecks(pr, triggeringUser, repoOwner);
         await workflow.checkUserPermissions(triggeringUser, repoOwner);
-        const { comments, tokens } = await workflow.processAndReviewDiff();
+        const { comments, tokens, fileChanges } = await workflow.processAndReviewDiff();
         if (comments.length === 0 && tokens.input === 0) {
             return; // No files to review
         }
-        await workflow.processAndPostComments(comments, tokens, modifiedFiles, pr, triggeringUser);
+        await workflow.processAndPostComments(comments, tokens, modifiedFiles, pr, triggeringUser, fileChanges);
         await workflow.reportCosts(tokens);
         logger_1.Logger.completion();
     }
@@ -695,7 +749,7 @@ Each comment should have:
 - file: the filename
 - line: the line number (from the diff)
 - end_line: (optional) the end line for multi-line comments
-- severity: "critical", "major", "minor", or "suggestion"
+- severity: "critical", "major", or "suggestion"
 - category: one of ${config.review_aspects.join(', ')}
 - comment: your feedback
 
@@ -1065,7 +1119,7 @@ class ReviewWorkflow {
         logger_1.Logger.chunksCreated(chunks.length);
         if (chunks.length === 0) {
             logger_1.Logger.noFilesToReview();
-            return { comments: [], tokens: { input: 0, output: 0 } };
+            return { comments: [], tokens: { input: 0, output: 0 }, fileChanges: diff };
         }
         logger_1.Logger.reviewStart();
         let allComments = [];
@@ -1084,9 +1138,9 @@ class ReviewWorkflow {
             totalTokens = (0, cost_1.accumulateTokens)(totalTokens, tokens);
         }
         logger_1.Logger.totalResults(allComments.length, totalTokens.input, totalTokens.output);
-        return { comments: allComments, tokens: totalTokens };
+        return { comments: allComments, tokens: totalTokens, fileChanges: diff };
     }
-    async processAndPostComments(allComments, totalTokens, modifiedFiles, pr, triggeringUser) {
+    async processAndPostComments(allComments, totalTokens, modifiedFiles, pr, triggeringUser, fileChanges) {
         logger_1.Logger.commentProcessing();
         // Log severity breakdown
         const severityCounts = allComments.reduce((acc, comment) => {
@@ -1112,14 +1166,14 @@ class ReviewWorkflow {
         if (finalComments.length > 0) {
             logger_1.Logger.postingReview(reviewBody.length, finalComments.length);
             const postStartTime = Date.now();
-            await (0, github_api_1.postReview)(this.octokit, this.context, pr, finalComments, reviewBody);
+            await (0, github_api_1.postReview)(this.octokit, this.context, pr, finalComments, reviewBody, fileChanges);
             const postDuration = Date.now() - postStartTime;
             logger_1.Logger.reviewPosted(finalComments.length, postDuration);
         }
         else {
             logger_1.Logger.summaryOnly(reviewBody.length);
             const postStartTime = Date.now();
-            await (0, github_api_1.postReview)(this.octokit, this.context, pr, [], reviewBody);
+            await (0, github_api_1.postReview)(this.octokit, this.context, pr, [], reviewBody, fileChanges);
             const postDuration = Date.now() - postStartTime;
             logger_1.Logger.summaryPosted(postDuration);
         }

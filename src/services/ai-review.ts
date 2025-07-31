@@ -21,7 +21,7 @@ Each comment should have:
 - file: the filename
 - line: the line number (from the diff)
 - end_line: (optional) the end line for multi-line comments
-- severity: "critical", "major", "minor", or "suggestion"
+- severity: "critical", "major", or "suggestion"
 - category: one of ${config.review_aspects.join(', ')}
 - comment: your feedback
 

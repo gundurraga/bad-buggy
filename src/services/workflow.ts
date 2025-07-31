@@ -1,5 +1,5 @@
 import * as github from '@actions/github';
-import { ActionInputs, ReviewConfig, TokenUsage, ReviewComment, PullRequest, User } from '../types';
+import { ActionInputs, ReviewConfig, TokenUsage, ReviewComment, PullRequest, User, FileChange } from '../types';
 import { validateInputs, validateConfig, validateAndThrow } from '../validation';
 import { validateSecurity } from '../domains/security';
 import { chunkDiff, processComments } from '../domains/review';
@@ -113,7 +113,7 @@ export class ReviewWorkflow {
     Logger.userPermissionsPassed();
   }
 
-  async processAndReviewDiff(): Promise<{ comments: ReviewComment[]; tokens: TokenUsage }> {
+  async processAndReviewDiff(): Promise<{ comments: ReviewComment[]; tokens: TokenUsage; fileChanges: FileChange[] }> {
     Logger.diffProcessing();
     
     const pr = this.context.payload.pull_request as PullRequest;
@@ -128,7 +128,7 @@ export class ReviewWorkflow {
 
     if (chunks.length === 0) {
       Logger.noFilesToReview();
-      return { comments: [], tokens: { input: 0, output: 0 } };
+      return { comments: [], tokens: { input: 0, output: 0 }, fileChanges: diff };
     }
 
     Logger.reviewStart();
@@ -161,7 +161,7 @@ export class ReviewWorkflow {
     }
 
     Logger.totalResults(allComments.length, totalTokens.input, totalTokens.output);
-    return { comments: allComments, tokens: totalTokens };
+    return { comments: allComments, tokens: totalTokens, fileChanges: diff };
   }
 
   async processAndPostComments(
@@ -169,7 +169,8 @@ export class ReviewWorkflow {
     totalTokens: TokenUsage,
     modifiedFiles: string[],
     pr: PullRequest,
-    triggeringUser: User
+    triggeringUser: User,
+    fileChanges: FileChange[]
   ): Promise<void> {
     Logger.commentProcessing();
     
@@ -213,7 +214,8 @@ export class ReviewWorkflow {
         this.context,
         pr,
         finalComments,
-        reviewBody
+        reviewBody,
+        fileChanges
       );
       const postDuration = Date.now() - postStartTime;
       
@@ -222,7 +224,7 @@ export class ReviewWorkflow {
       Logger.summaryOnly(reviewBody.length);
       
       const postStartTime = Date.now();
-      await postReview(this.octokit, this.context, pr, [], reviewBody);
+      await postReview(this.octokit, this.context, pr, [], reviewBody, fileChanges);
       const postDuration = Date.now() - postStartTime;
       
       Logger.summaryPosted(postDuration);

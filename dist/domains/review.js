@@ -32,7 +32,7 @@ exports.shouldIgnoreFile = shouldIgnoreFile;
 const chunkDiff = (diff, config) => {
     const chunks = [];
     let currentChunk = { content: '', files: [], size: 0 };
-    const maxChunkSize = 8000; // Conservative limit for API calls
+    const maxChunkSize = 50000; // Optimized for Claude 4 Sonnet's large context window
     for (const file of diff) {
         if ((0, exports.shouldIgnoreFile)(file.filename, config)) {
             continue;
@@ -60,7 +60,7 @@ const processComments = (comments, config) => {
     // Parse and sort comments
     const sortedComments = [...comments];
     if (config.prioritize_by_severity) {
-        const severityOrder = { critical: 0, major: 1, minor: 2, info: 3 };
+        const severityOrder = { critical: 0, major: 1, suggestion: 2 };
         sortedComments.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
     }
     // Limit to max_comments

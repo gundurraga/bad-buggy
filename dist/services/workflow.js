@@ -72,7 +72,7 @@ class ReviewWorkflow {
         logger_1.Logger.chunksCreated(chunks.length);
         if (chunks.length === 0) {
             logger_1.Logger.noFilesToReview();
-            return { comments: [], tokens: { input: 0, output: 0 } };
+            return { comments: [], tokens: { input: 0, output: 0 }, fileChanges: diff };
         }
         logger_1.Logger.reviewStart();
         let allComments = [];
@@ -91,9 +91,9 @@ class ReviewWorkflow {
             totalTokens = (0, cost_1.accumulateTokens)(totalTokens, tokens);
         }
         logger_1.Logger.totalResults(allComments.length, totalTokens.input, totalTokens.output);
-        return { comments: allComments, tokens: totalTokens };
+        return { comments: allComments, tokens: totalTokens, fileChanges: diff };
     }
-    async processAndPostComments(allComments, totalTokens, modifiedFiles, pr, triggeringUser) {
+    async processAndPostComments(allComments, totalTokens, modifiedFiles, pr, triggeringUser, fileChanges) {
         logger_1.Logger.commentProcessing();
         // Log severity breakdown
         const severityCounts = allComments.reduce((acc, comment) => {
@@ -119,14 +119,14 @@ class ReviewWorkflow {
         if (finalComments.length > 0) {
             logger_1.Logger.postingReview(reviewBody.length, finalComments.length);
             const postStartTime = Date.now();
-            await (0, github_api_1.postReview)(this.octokit, this.context, pr, finalComments, reviewBody);
+            await (0, github_api_1.postReview)(this.octokit, this.context, pr, finalComments, reviewBody, fileChanges);
             const postDuration = Date.now() - postStartTime;
             logger_1.Logger.reviewPosted(finalComments.length, postDuration);
         }
         else {
             logger_1.Logger.summaryOnly(reviewBody.length);
             const postStartTime = Date.now();
-            await (0, github_api_1.postReview)(this.octokit, this.context, pr, [], reviewBody);
+            await (0, github_api_1.postReview)(this.octokit, this.context, pr, [], reviewBody, fileChanges);
             const postDuration = Date.now() - postStartTime;
             logger_1.Logger.summaryPosted(postDuration);
         }

@@ -46,7 +46,8 @@ const loadConfigFromFile = async (configFile) => {
         return yaml.load(configContent);
     }
     catch (error) {
-        throw new Error(`Failed to load config file: ${error.message}`);
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`Failed to load config file: ${message}`);
     }
 };
 exports.loadConfigFromFile = loadConfigFromFile;

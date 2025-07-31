@@ -1,4 +1,4 @@
-import { ReviewComment, DiffChunk, FileChange, ReviewConfig, TokenUsage } from '../types';
+import { ReviewComment, DiffChunk, FileChange, ReviewConfig } from '../types';
 
 // Pure function to count tokens
 export const countTokens = (text: string, model: string): number => {

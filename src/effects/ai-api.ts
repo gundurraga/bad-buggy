@@ -61,7 +61,19 @@ export const callOpenRouter = async (
     throw new AIProviderError(`OpenRouter API error: ${response.status} - ${errorText}`);
   }
 
-  const data = await response.json() as any;
+  interface OpenRouterResponse {
+    choices: Array<{
+      message: {
+        content: string;
+      };
+    }>;
+    usage: {
+      prompt_tokens: number;
+      completion_tokens: number;
+    };
+  }
+  
+  const data = await response.json() as OpenRouterResponse;
   return {
     content: data.choices[0].message.content,
     usage: {

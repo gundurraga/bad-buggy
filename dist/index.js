@@ -9,65 +9,8 @@ require('./sourcemap-register.js');/******/ (() => { // webpackBootstrap
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.loadConfig = exports.mergeConfig = exports.DEFAULT_CONFIG = void 0;
 const file_system_1 = __nccwpck_require__(1162);
-// Default configuration
-exports.DEFAULT_CONFIG = {
-    review_prompt: `You are an expert code reviewer. Your task is to review the provided code changes and identify issues.
-
-MANDATORY FIRST STEP: Identify the single most critical issue in this code. This must be one of:
-- Functional failures (bugs, logic errors, incorrect behavior)
-- System stability issues (memory leaks, performance problems, crashes)
-- Maintainability blockers (code that will be impossible to maintain or extend)
-
-Output this as: **CRITICAL ISSUE: [brief description]**
-
-EVALUATION FRAMEWORK:
-1. **Functional Correctness**: Does the code work as intended?
-2. **Technical Implementation**: Is the approach sound and efficient?
-3. **Code Quality**: Is it readable, maintainable, and well-structured?
-4. **Testing & Reliability**: Are edge cases handled? Is it testable?
-5. **Security & Safety**: Are there security vulnerabilities or unsafe practices?
-
-ANTIPATTERN DETECTION:
-- God objects/functions doing too much
-- Magic numbers and hardcoded values
-- Poor error handling or silent failures
-- Tight coupling between components
-- Code duplication
-
-COMMENT STRATEGY:
-Focus on critical issues that could cause:
-- Production failures
-- Security vulnerabilities
-- Major maintainability problems
-- Performance degradation
-
-For each issue found, provide:
-**File:** [filename]
-**Line:** [line number]
-**Severity:** [critical/major/minor/info]
-**Comment:** [detailed explanation with suggested fix]
-
-Prioritize critical and major issues. Avoid nitpicking minor style issues unless they impact functionality.`,
-    max_comments: 5,
-    prioritize_by_severity: true,
-    review_aspects: [
-        'bugs',
-        'security',
-        'performance',
-        'maintainability',
-        'testing',
-        'documentation'
-    ],
-    ignore_patterns: [
-        '*.md',
-        '*.txt',
-        '*.json',
-        'package-lock.json',
-        'yarn.lock',
-        '*.log'
-    ],
-    allowed_users: []
-};
+const default_config_1 = __nccwpck_require__(5853);
+Object.defineProperty(exports, "DEFAULT_CONFIG", ({ enumerable: true, get: function () { return default_config_1.DEFAULT_CONFIG; } }));
 // Pure function to merge configurations
 const mergeConfig = (defaultConfig, userConfig) => {
     return {
@@ -79,10 +22,63 @@ exports.mergeConfig = mergeConfig;
 // Effect: Load and merge configuration
 const loadConfig = async (configFile) => {
     const userConfig = await (0, file_system_1.loadConfigFromFile)(configFile);
-    return userConfig ? (0, exports.mergeConfig)(exports.DEFAULT_CONFIG, userConfig) : exports.DEFAULT_CONFIG;
+    return userConfig ? (0, exports.mergeConfig)(default_config_1.DEFAULT_CONFIG, userConfig) : default_config_1.DEFAULT_CONFIG;
 };
 exports.loadConfig = loadConfig;
 //# sourceMappingURL=config.js.map
+
+/***/ }),
+
+/***/ 5853:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.DEFAULT_CONFIG = void 0;
+// Default configuration for bad-buggy AI code review
+exports.DEFAULT_CONFIG = {
+    review_prompt: `CONTEXT: Today is {{DATE}}. Review with current best practices in mind.
+
+MANDATORY FIRST STEP - IDENTIFY MOST CRITICAL ISSUE:
+Priority 1: Functional failures (broken core functionality, data corruption risks, critical security vulnerabilities, memory leaks)
+Priority 2: System stability (poor error handling, race conditions, performance bottlenecks)  
+Priority 3: Maintainability blockers (architectural violations, tight coupling, code duplication)
+
+Output format: "MOST CRITICAL ISSUE: [Category] - [Description]. IMPACT: [What breaks if unfixed]. IMMEDIATE ACTION: [Specific fix needed]."
+
+EVALUATION FRAMEWORK:
+- Functional Correctness: Requirements met, edge cases handled, input validation, boundary conditions
+- Technical Implementation: Algorithm efficiency, architecture decisions, technology usage appropriately
+- Code Quality: Readability (clear naming, formatting), documentation (explains why not just what), comprehensive error handling
+- Testing & Reliability: Unit/integration tests, edge case coverage, proper mocking
+- Security & Safety: Input sanitization, authentication checks, no hardcoded secrets
+
+ANTIPATTERN DETECTION - Flag and educate on:
+- God objects/functions (200+ line functions doing everything)
+- Magic numbers/strings (use constants with descriptive names)
+- Poor error handling (silent failures, swallowing exceptions)
+- Tight coupling (changes requiring modifications across unrelated modules)
+- Code duplication (repeated logic that should be abstracted)
+
+COMMENT STRATEGY: Only add comments for genuinely critical issues that will impact functionality, security, or long-term maintainability. Skip minor style preferences unless they create real problems.`,
+    max_comments: 5,
+    prioritize_by_severity: true,
+    review_aspects: [
+        'bugs',
+        'security_vulnerabilities',
+        'performance_issues',
+        'code_quality',
+        'best_practices',
+        'architecture_suggestions',
+        'code_organization',
+        'code_readability',
+        'code_maintainability',
+    ],
+    ignore_patterns: [],
+    allowed_users: [], // Empty array means allow all users
+};
+//# sourceMappingURL=default-config.js.map
 
 /***/ }),
 
@@ -509,7 +505,8 @@ const loadConfigFromFile = async (configFile) => {
         return yaml.load(configContent);
     }
     catch (error) {
-        throw new Error(`Failed to load config file: ${error.message}`);
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`Failed to load config file: ${message}`);
     }
 };
 exports.loadConfigFromFile = loadConfigFromFile;

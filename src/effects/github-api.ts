@@ -1,11 +1,12 @@
 import { getOctokit } from '@actions/github';
-import { FileChange, ReviewComment, GitHubContext, PullRequest } from '../types';
+import { Context } from '@actions/github/lib/context';
+import { FileChange, ReviewComment, PullRequest } from '../types';
 
 // Effect: Get PR diff from GitHub API
 export const getPRDiff = async (
   octokit: ReturnType<typeof getOctokit>,
-  context: any,
-  pr: any
+  context: Context,
+  pr: PullRequest
 ): Promise<FileChange[]> => {
   const { data: files } = await octokit.rest.pulls.listFiles({
     owner: context.repo.owner,
@@ -43,8 +44,8 @@ export const checkUserPermissions = async (
 // Effect: Post review to GitHub
 export const postReview = async (
   octokit: ReturnType<typeof getOctokit>,
-  context: any,
-  pr: any,
+  context: Context,
+  pr: PullRequest,
   comments: ReviewComment[],
   body: string
 ): Promise<void> => {

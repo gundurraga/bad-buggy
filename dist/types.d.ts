@@ -31,7 +31,9 @@ export interface ReviewConfig {
     review_aspects: string[];
     ignore_patterns: string[];
     allowed_users: string[];
+    allowed_users_env?: string;
 }
+export type Config = ReviewConfig;
 export interface ActionInputs {
     githubToken: string;
     aiProvider: 'anthropic' | 'openrouter';

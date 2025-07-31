@@ -1,7 +1,14 @@
-import { PullRequest, FileChange } from '../types';
+import { PullRequest } from '../types';
 
 // Pure function to extract PR info
-export const extractPRInfo = (pr: PullRequest) => {
+export const extractPRInfo = (pr: PullRequest): {
+  number: number;
+  headSha: string;
+  baseSha: string;
+  headRef: string;
+  baseRef: string;
+  author: string;
+} => {
   return {
     number: pr.number,
     headSha: pr.head.sha,
@@ -26,7 +33,11 @@ export const formatReviewBody = (
 };
 
 // Pure function to create review comment
-export const createReviewComment = (path: string, line: number, body: string) => {
+export const createReviewComment = (path: string, line: number, body: string): {
+  path: string;
+  line: number;
+  body: string;
+} => {
   return {
     path,
     line,

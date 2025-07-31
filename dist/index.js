@@ -486,7 +486,7 @@ const loadConfigFromFile = async (configFile) => {
             return null;
         }
         const configContent = fs.readFileSync(configFile, 'utf8');
-        return yaml.load(configContent, { schema: yaml.FAILSAFE_SCHEMA });
+        return yaml.load(configContent);
     }
     catch (error) {
         const message = error instanceof Error ? error.message : String(error);

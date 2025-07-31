@@ -37,27 +37,43 @@ export const chunkDiff = (
 ): DiffChunk[] => {
   const chunks: DiffChunk[] = [];
   let currentChunk: DiffChunk = { content: "", files: [], size: 0 };
-  const maxChunkSize = 50000;
+  const maxChunkSize = 60000;
 
-  for (const file of diff) {
-    if (shouldIgnoreFile(file.filename, config)) {
-      continue;
-    }
+  // Filter out ignored files first
+  const validFiles = diff.filter(file => !shouldIgnoreFile(file.filename, config));
 
-    const fileContent = `\n--- ${file.filename} (${file.status})\n${
+  // Pre-calculate file content and sizes for better optimization
+  const fileData = validFiles.map(file => {
+    const content = `\n--- ${file.filename} (${file.status})\n${
       file.patch || ""
     }\n`;
-    const fileSize = fileContent.length;
+    return {
+      file,
+      content,
+      size: content.length
+    };
+  });
 
-    // If adding this file would exceed chunk size, start a new chunk
-    if (currentChunk.size + fileSize > maxChunkSize && currentChunk.content) {
-      chunks.push(currentChunk);
-      currentChunk = { content: "", files: [], size: 0 };
+  // Sort files by size (smallest first) to optimize packing
+  fileData.sort((a, b) => a.size - b.size);
+
+  for (const { file, content, size } of fileData) {
+    // If this is the first file or adding it won't exceed the limit, add to current chunk
+    if (currentChunk.size === 0 || currentChunk.size + size <= maxChunkSize) {
+      currentChunk.content += content;
+      currentChunk.files.push(file.filename);
+      currentChunk.size += size;
+    } else {
+      // Current chunk is full, start a new one
+      if (currentChunk.content) {
+        chunks.push(currentChunk);
+      }
+      currentChunk = {
+        content: content,
+        files: [file.filename],
+        size: size
+      };
     }
-
-    currentChunk.content += fileContent;
-    currentChunk.files.push(file.filename);
-    currentChunk.size += fileSize;
   }
 
   // Add the last chunk if it has content

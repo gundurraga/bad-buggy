@@ -225,21 +225,38 @@ exports.shouldIgnoreFile = shouldIgnoreFile;
 const chunkDiff = (diff, config) => {
     const chunks = [];
     let currentChunk = { content: "", files: [], size: 0 };
-    const maxChunkSize = 50000;
-    for (const file of diff) {
-        if ((0, exports.shouldIgnoreFile)(file.filename, config)) {
-            continue;
+    const maxChunkSize = 60000;
+    // Filter out ignored files first
+    const validFiles = diff.filter(file => !(0, exports.shouldIgnoreFile)(file.filename, config));
+    // Pre-calculate file content and sizes for better optimization
+    const fileData = validFiles.map(file => {
+        const content = `\n--- ${file.filename} (${file.status})\n${file.patch || ""}\n`;
+        return {
+            file,
+            content,
+            size: content.length
+        };
+    });
+    // Sort files by size (smallest first) to optimize packing
+    fileData.sort((a, b) => a.size - b.size);
+    for (const { file, content, size } of fileData) {
+        // If this is the first file or adding it won't exceed the limit, add to current chunk
+        if (currentChunk.size === 0 || currentChunk.size + size <= maxChunkSize) {
+            currentChunk.content += content;
+            currentChunk.files.push(file.filename);
+            currentChunk.size += size;
         }
-        const fileContent = `\n--- ${file.filename} (${file.status})\n${file.patch || ""}\n`;
-        const fileSize = fileContent.length;
-        // If adding this file would exceed chunk size, start a new chunk
-        if (currentChunk.size + fileSize > maxChunkSize && currentChunk.content) {
-            chunks.push(currentChunk);
-            currentChunk = { content: "", files: [], size: 0 };
+        else {
+            // Current chunk is full, start a new one
+            if (currentChunk.content) {
+                chunks.push(currentChunk);
+            }
+            currentChunk = {
+                content: content,
+                files: [file.filename],
+                size: size
+            };
         }
-        currentChunk.content += fileContent;
-        currentChunk.files.push(file.filename);
-        currentChunk.size += fileSize;
     }
     // Add the last chunk if it has content
     if (currentChunk.content) {

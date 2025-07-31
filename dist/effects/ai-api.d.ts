@@ -1,4 +1,4 @@
-import { AIProviderResponse } from '../types';
+import { AIProviderResponse } from "../types";
 export declare const callAnthropic: (prompt: string, apiKey: string, model: string) => Promise<AIProviderResponse>;
 export declare const callOpenRouter: (prompt: string, apiKey: string, model: string) => Promise<AIProviderResponse>;
 export declare const callAIProvider: (provider: "anthropic" | "openrouter", prompt: string, apiKey: string, model: string) => Promise<AIProviderResponse>;

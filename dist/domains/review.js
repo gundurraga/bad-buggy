@@ -5,13 +5,13 @@ exports.processComments = exports.chunkDiff = exports.shouldIgnoreFile = exports
 const countTokens = (text, model) => {
     let avgCharsPerToken = 3.5; // Default conservative estimate
     // Adjust based on model type (rough estimates)
-    if (model.includes('claude')) {
+    if (model.includes("claude")) {
         avgCharsPerToken = 3.8; // Claude tends to have slightly longer tokens
     }
-    else if (model.includes('gpt-4')) {
+    else if (model.includes("gpt-4")) {
         avgCharsPerToken = 3.2; // GPT-4 is more efficient
     }
-    else if (model.includes('gpt-3')) {
+    else if (model.includes("gpt-3")) {
         avgCharsPerToken = 3.0; // GPT-3 models
     }
     return Math.ceil(text.length / avgCharsPerToken);
@@ -19,9 +19,9 @@ const countTokens = (text, model) => {
 exports.countTokens = countTokens;
 // Pure function to check if file should be ignored
 const shouldIgnoreFile = (filename, config) => {
-    return config.ignore_patterns.some(pattern => {
-        if (pattern.includes('*')) {
-            const regex = new RegExp(pattern.replace(/\*/g, '.*'));
+    return config.ignore_patterns.some((pattern) => {
+        if (pattern.includes("*")) {
+            const regex = new RegExp(pattern.replace(/\*/g, ".*"));
             return regex.test(filename);
         }
         return filename.includes(pattern);
@@ -31,18 +31,18 @@ exports.shouldIgnoreFile = shouldIgnoreFile;
 // Pure function to chunk diff content
 const chunkDiff = (diff, config) => {
     const chunks = [];
-    let currentChunk = { content: '', files: [], size: 0 };
-    const maxChunkSize = 50000; // Optimized for Claude 4 Sonnet's large context window
+    let currentChunk = { content: "", files: [], size: 0 };
+    const maxChunkSize = 50000;
     for (const file of diff) {
         if ((0, exports.shouldIgnoreFile)(file.filename, config)) {
             continue;
         }
-        const fileContent = `\n--- ${file.filename} (${file.status})\n${file.patch || ''}\n`;
+        const fileContent = `\n--- ${file.filename} (${file.status})\n${file.patch || ""}\n`;
         const fileSize = fileContent.length;
         // If adding this file would exceed chunk size, start a new chunk
         if (currentChunk.size + fileSize > maxChunkSize && currentChunk.content) {
             chunks.push(currentChunk);
-            currentChunk = { content: '', files: [], size: 0 };
+            currentChunk = { content: "", files: [], size: 0 };
         }
         currentChunk.content += fileContent;
         currentChunk.files.push(file.filename);

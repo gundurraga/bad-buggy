@@ -1,15 +1,15 @@
-import { ReviewComment, DiffChunk, FileChange, ReviewConfig } from '../types';
+import { ReviewComment, DiffChunk, FileChange, ReviewConfig } from "../types";
 
 // Pure function to count tokens
 export const countTokens = (text: string, model: string): number => {
   let avgCharsPerToken = 3.5; // Default conservative estimate
 
   // Adjust based on model type (rough estimates)
-  if (model.includes('claude')) {
+  if (model.includes("claude")) {
     avgCharsPerToken = 3.8; // Claude tends to have slightly longer tokens
-  } else if (model.includes('gpt-4')) {
+  } else if (model.includes("gpt-4")) {
     avgCharsPerToken = 3.2; // GPT-4 is more efficient
-  } else if (model.includes('gpt-3')) {
+  } else if (model.includes("gpt-3")) {
     avgCharsPerToken = 3.0; // GPT-3 models
   }
 
@@ -17,10 +17,13 @@ export const countTokens = (text: string, model: string): number => {
 };
 
 // Pure function to check if file should be ignored
-export const shouldIgnoreFile = (filename: string, config: ReviewConfig): boolean => {
-  return config.ignore_patterns.some(pattern => {
-    if (pattern.includes('*')) {
-      const regex = new RegExp(pattern.replace(/\*/g, '.*'));
+export const shouldIgnoreFile = (
+  filename: string,
+  config: ReviewConfig
+): boolean => {
+  return config.ignore_patterns.some((pattern) => {
+    if (pattern.includes("*")) {
+      const regex = new RegExp(pattern.replace(/\*/g, ".*"));
       return regex.test(filename);
     }
     return filename.includes(pattern);
@@ -28,23 +31,28 @@ export const shouldIgnoreFile = (filename: string, config: ReviewConfig): boolea
 };
 
 // Pure function to chunk diff content
-export const chunkDiff = (diff: FileChange[], config: ReviewConfig): DiffChunk[] => {
+export const chunkDiff = (
+  diff: FileChange[],
+  config: ReviewConfig
+): DiffChunk[] => {
   const chunks: DiffChunk[] = [];
-  let currentChunk: DiffChunk = { content: '', files: [], size: 0 };
-  const maxChunkSize = 50000; // Optimized for Claude 4 Sonnet's large context window
+  let currentChunk: DiffChunk = { content: "", files: [], size: 0 };
+  const maxChunkSize = 50000;
 
   for (const file of diff) {
     if (shouldIgnoreFile(file.filename, config)) {
       continue;
     }
 
-    const fileContent = `\n--- ${file.filename} (${file.status})\n${file.patch || ''}\n`;
+    const fileContent = `\n--- ${file.filename} (${file.status})\n${
+      file.patch || ""
+    }\n`;
     const fileSize = fileContent.length;
 
     // If adding this file would exceed chunk size, start a new chunk
     if (currentChunk.size + fileSize > maxChunkSize && currentChunk.content) {
       chunks.push(currentChunk);
-      currentChunk = { content: '', files: [], size: 0 };
+      currentChunk = { content: "", files: [], size: 0 };
     }
 
     currentChunk.content += fileContent;
@@ -61,13 +69,18 @@ export const chunkDiff = (diff: FileChange[], config: ReviewConfig): DiffChunk[]
 };
 
 // Pure function to process and sort comments
-export const processComments = (comments: ReviewComment[], config: ReviewConfig): ReviewComment[] => {
+export const processComments = (
+  comments: ReviewComment[],
+  config: ReviewConfig
+): ReviewComment[] => {
   // Parse and sort comments
   const sortedComments = [...comments];
-  
+
   if (config.prioritize_by_severity) {
     const severityOrder = { critical: 0, major: 1, suggestion: 2 };
-    sortedComments.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+    sortedComments.sort(
+      (a, b) => severityOrder[a.severity] - severityOrder[b.severity]
+    );
   }
 
   // Limit to max_comments

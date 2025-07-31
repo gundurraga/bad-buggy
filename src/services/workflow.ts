@@ -9,8 +9,18 @@ import { getPRDiff, postReview, checkUserPermissions } from '../effects/github-a
 import { reviewChunk } from './ai-review';
 import { Logger } from './logger';
 
+// Permission level constants
+const PERMISSION_LEVELS = {
+  ADMIN: 'admin',
+  WRITE: 'write',
+  READ: 'read',
+  NONE: 'none'
+} as const;
+
+const REQUIRED_PERMISSIONS = [PERMISSION_LEVELS.ADMIN, PERMISSION_LEVELS.WRITE] as const;
+
 /**
- * Workflow orchestrator for the AI code review process
+ * Workflow orchestrator for the Bad Buggy code review process
  */
 
 export class ReviewWorkflow {
@@ -94,6 +104,7 @@ export class ReviewWorkflow {
   async checkUserPermissions(triggeringUser: User, repoOwner: string): Promise<void> {
     Logger.userPermissionCheck(triggeringUser.login);
     
+    // Real-time permission validation
     const userPermission = await checkUserPermissions(
       this.octokit,
       repoOwner,
@@ -103,11 +114,24 @@ export class ReviewWorkflow {
     
     Logger.userPermissionLevel(userPermission);
 
-    if (
-      !['admin', 'write'].includes(userPermission) &&
-      triggeringUser.login !== repoOwner
-    ) {
-      throw new Error('User does not have sufficient permissions to trigger AI reviews');
+    // Validate against required permission levels using constants
+    const hasRequiredPermission = REQUIRED_PERMISSIONS.includes(userPermission as (typeof REQUIRED_PERMISSIONS)[number]);
+    const isRepoOwner = triggeringUser.login === repoOwner;
+    
+    if (!hasRequiredPermission && !isRepoOwner) {
+      throw new Error(`User does not have sufficient permissions to trigger AI reviews. Required: ${REQUIRED_PERMISSIONS.join(' or ')}, Current: ${userPermission}`);
+    }
+    
+    // Double-check permissions haven't changed during execution
+    const revalidatedPermission = await checkUserPermissions(
+      this.octokit,
+      repoOwner,
+      this.context.repo.repo,
+      triggeringUser.login
+    );
+    
+    if (revalidatedPermission !== userPermission) {
+      throw new Error(`Permission level changed during execution. Original: ${userPermission}, Current: ${revalidatedPermission}`);
     }
     
     Logger.userPermissionsPassed();

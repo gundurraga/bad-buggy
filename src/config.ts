@@ -1,4 +1,4 @@
-import { ReviewConfig, ActionInputs } from './types';
+import { ReviewConfig } from './types';
 import { loadConfigFromFile } from './effects/file-system';
 import { DEFAULT_CONFIG } from './config/default-config';
 

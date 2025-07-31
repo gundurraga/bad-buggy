@@ -10,7 +10,7 @@ export const loadConfigFromFile = async (configFile: string): Promise<ReviewConf
     }
     
     const configContent = fs.readFileSync(configFile, 'utf8');
-    return yaml.load(configContent) as ReviewConfig;
+    return yaml.load(configContent, { schema: yaml.FAILSAFE_SCHEMA }) as ReviewConfig;
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`Failed to load config file: ${message}`);

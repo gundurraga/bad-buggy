@@ -1,7 +1,7 @@
 {
   "name": "bad-buggy",
   "version": "1.0.0",
-  "description": "AI-powered GitHub PR reviewer with cost tracking",
+  "description": "🐰⚡ Bad Buggy is a simple, cost-effective GitHub Action that uses AI to review and comment your pull requests.",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc && ncc build dist/main.js -o dist --source-map --license licenses.txt",

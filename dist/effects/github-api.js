@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.postReview = exports.checkUserPermissions = exports.getPRDiff = void 0;
+const logger_1 = require("../services/logger");
 // Effect: Get PR diff from GitHub API
 const getPRDiff = async (octokit, context, pr) => {
     const { data: files } = await octokit.rest.pulls.listFiles({
@@ -84,7 +85,8 @@ const postReview = async (octokit, context, pr, comments, body, fileChanges) => 
         validatedComments = validateCommentsAgainstDiff(comments, fileChanges);
         if (validatedComments.length < comments.length) {
             const filteredCount = comments.length - validatedComments.length;
-            console.log(`Filtered out ${filteredCount} comments that referenced invalid diff lines`);
+            const filteredComments = comments.filter(c => !validatedComments.includes(c));
+            logger_1.Logger.commentFiltering(filteredCount, filteredComments.map(c => `${c.path}:${c.line}`));
         }
     }
     const reviewComments = validatedComments.map(comment => ({

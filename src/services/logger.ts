@@ -8,7 +8,7 @@ import { formatCost } from '../domains/cost';
 
 export class Logger {
   static startup(): void {
-    core.info('🚀 Starting AI Code Review Action');
+    core.info('🚀 Starting Bad Buggy Action');
   }
 
   static inputs(provider: string, model: string, configFile: string): void {
@@ -176,7 +176,14 @@ export class Logger {
   }
 
   static completion(): void {
-    core.info('🎉 AI Code Review completed successfully!');
+    core.info('🎉 Bad Buggy completed successfully!');
+  }
+
+  static commentFiltering(filteredCount: number, filteredComments: string[]): void {
+    core.info(`🔍 Filtered out ${filteredCount} comments that referenced invalid diff lines`);
+    if (filteredComments.length > 0) {
+      core.info(`   Filtered comments: ${filteredComments.join(', ')}`);
+    }
   }
 
   static error(message: string): void {

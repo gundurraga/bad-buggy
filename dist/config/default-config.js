@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DEFAULT_CONFIG = void 0;
-// Default configuration for bad-buggy AI code review
+// Default configuration for Bad Buggy code review
 exports.DEFAULT_CONFIG = {
     review_prompt: `CONTEXT: Today is {{DATE}}. Review with current best practices in mind.
 

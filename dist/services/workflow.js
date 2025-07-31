@@ -9,8 +9,16 @@ const github_1 = require("../domains/github");
 const github_api_1 = require("../effects/github-api");
 const ai_review_1 = require("./ai-review");
 const logger_1 = require("./logger");
+// Permission level constants
+const PERMISSION_LEVELS = {
+    ADMIN: 'admin',
+    WRITE: 'write',
+    READ: 'read',
+    NONE: 'none'
+};
+const REQUIRED_PERMISSIONS = [PERMISSION_LEVELS.ADMIN, PERMISSION_LEVELS.WRITE];
 /**
- * Workflow orchestrator for the AI code review process
+ * Workflow orchestrator for the Bad Buggy code review process
  */
 class ReviewWorkflow {
     constructor(octokit, context, inputs, config) {
@@ -53,11 +61,19 @@ class ReviewWorkflow {
     }
     async checkUserPermissions(triggeringUser, repoOwner) {
         logger_1.Logger.userPermissionCheck(triggeringUser.login);
+        // Real-time permission validation
         const userPermission = await (0, github_api_1.checkUserPermissions)(this.octokit, repoOwner, this.context.repo.repo, triggeringUser.login);
         logger_1.Logger.userPermissionLevel(userPermission);
-        if (!['admin', 'write'].includes(userPermission) &&
-            triggeringUser.login !== repoOwner) {
-            throw new Error('User does not have sufficient permissions to trigger AI reviews');
+        // Validate against required permission levels using constants
+        const hasRequiredPermission = REQUIRED_PERMISSIONS.includes(userPermission);
+        const isRepoOwner = triggeringUser.login === repoOwner;
+        if (!hasRequiredPermission && !isRepoOwner) {
+            throw new Error(`User does not have sufficient permissions to trigger AI reviews. Required: ${REQUIRED_PERMISSIONS.join(' or ')}, Current: ${userPermission}`);
+        }
+        // Double-check permissions haven't changed during execution
+        const revalidatedPermission = await (0, github_api_1.checkUserPermissions)(this.octokit, repoOwner, this.context.repo.repo, triggeringUser.login);
+        if (revalidatedPermission !== userPermission) {
+            throw new Error(`Permission level changed during execution. Original: ${userPermission}, Current: ${revalidatedPermission}`);
         }
         logger_1.Logger.userPermissionsPassed();
     }

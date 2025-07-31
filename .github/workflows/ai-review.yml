@@ -1,4 +1,4 @@
-name: Bad Buggy reviews itself
+name: 🐰⚡ Bad Buggy reviews itself
 
 on:
   pull_request:
@@ -21,6 +21,6 @@ jobs:
         uses: gundurraga/bad-buggy@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          ai-provider: "anthropic"
-          api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-          model: "claude-sonnet-4-20250514"
+          ai-provider: "openrouter"
+          api-key: ${{ secrets.OPENROUTER_API_KEY }}
+          model: "qwen/qwen3-coder"

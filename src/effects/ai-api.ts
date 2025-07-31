@@ -47,7 +47,7 @@ export const callOpenRouter = async (
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${apiKey}`,
       'HTTP-Referer': 'https://github.com/bad-buggy/bad-buggy',
-      'X-Title': 'Bad Buggy AI Code Reviewer'
+      'X-Title': 'Bad Buggy Code Reviewer'
     },
     body: JSON.stringify({
       model,

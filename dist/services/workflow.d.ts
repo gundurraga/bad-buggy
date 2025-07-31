@@ -1,7 +1,7 @@
 import * as github from '@actions/github';
 import { ActionInputs, ReviewConfig, TokenUsage, ReviewComment, PullRequest, User, FileChange } from '../types';
 /**
- * Workflow orchestrator for the AI code review process
+ * Workflow orchestrator for the Bad Buggy code review process
  */
 export declare class ReviewWorkflow {
     private octokit;

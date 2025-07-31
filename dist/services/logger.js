@@ -41,7 +41,7 @@ const cost_1 = require("../domains/cost");
  */
 class Logger {
     static startup() {
-        core.info('🚀 Starting AI Code Review Action');
+        core.info('🚀 Starting Bad Buggy Action');
     }
     static inputs(provider, model, configFile) {
         core.info('📋 Getting action inputs...');
@@ -176,7 +176,13 @@ class Logger {
         }
     }
     static completion() {
-        core.info('🎉 AI Code Review completed successfully!');
+        core.info('🎉 Bad Buggy completed successfully!');
+    }
+    static commentFiltering(filteredCount, filteredComments) {
+        core.info(`🔍 Filtered out ${filteredCount} comments that referenced invalid diff lines`);
+        if (filteredComments.length > 0) {
+            core.info(`   Filtered comments: ${filteredComments.join(', ')}`);
+        }
     }
     static error(message) {
         core.setFailed(`Action failed: ${message}`);

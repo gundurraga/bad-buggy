@@ -38,6 +38,7 @@ export declare class Logger {
     static costSummary(totalCost: number, inputCost: number, outputCost: number): void;
     static costBreakdown(tokens: TokenUsage, inputCost: number, outputCost: number, totalCost: number): void;
     static completion(): void;
+    static commentFiltering(filteredCount: number, filteredComments: string[]): void;
     static error(message: string): void;
 }
 //# sourceMappingURL=logger.d.ts.map

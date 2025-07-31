@@ -82,12 +82,38 @@ const run = async () => {
     }
     catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
+        // Classify error types for better debugging
+        if (error instanceof Error) {
+            if (error.message.includes('validation')) {
+                core.setFailed(`Configuration Error: ${errorMessage}`);
+                process.exit(1);
+            }
+            else if (error.message.includes('permission')) {
+                core.setFailed(`Permission Error: ${errorMessage}`);
+                process.exit(2);
+            }
+            else if (error.message.includes('API')) {
+                core.setFailed(`API Error: ${errorMessage}`);
+                process.exit(3);
+            }
+            else {
+                core.setFailed(`Unexpected Error: ${errorMessage}`);
+                process.exit(4);
+            }
+        }
+        else {
+            core.setFailed(`Unknown Error: ${errorMessage}`);
+            process.exit(5);
+        }
         logger_1.Logger.error(errorMessage);
     }
 };
 exports.run = run;
 // Execute if this is the main module
 if (require.main === module) {
-    (0, exports.run)();
+    (0, exports.run)().catch((error) => {
+        console.error('Fatal error during execution:', error);
+        process.exit(6);
+    });
 }
 //# sourceMappingURL=main.js.map

@@ -14,10 +14,16 @@ export interface PullRequest {
   head: {
     sha: string;
     ref: string;
+    repo: {
+      full_name: string;
+    };
   };
   base: {
     sha: string;
     ref: string;
+    repo: {
+      full_name: string;
+    };
   };
   user: User;
 }

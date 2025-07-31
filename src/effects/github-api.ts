@@ -1,6 +1,7 @@
 import { getOctokit } from '@actions/github';
 import { Context } from '@actions/github/lib/context';
 import { FileChange, ReviewComment, PullRequest } from '../types';
+import { Logger } from '../services/logger';
 
 // Effect: Get PR diff from GitHub API
 export const getPRDiff = async (
@@ -114,7 +115,8 @@ export const postReview = async (
     
     if (validatedComments.length < comments.length) {
       const filteredCount = comments.length - validatedComments.length;
-      console.log(`Filtered out ${filteredCount} comments that referenced invalid diff lines`);
+      const filteredComments = comments.filter(c => !validatedComments.includes(c));
+      Logger.commentFiltering(filteredCount, filteredComments.map(c => `${c.path}:${c.line}`));
     }
   }
 

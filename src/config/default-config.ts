@@ -1,6 +1,6 @@
 import { Config } from '../types';
 
-// Default configuration for bad-buggy AI code review
+// Default configuration for Bad Buggy code review
 export const DEFAULT_CONFIG: Config = {
   review_prompt: `CONTEXT: Today is {{DATE}}. Review with current best practices in mind.
 

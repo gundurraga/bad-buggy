@@ -4,7 +4,7 @@ import { callAIProvider } from '../effects/ai-api';
 import { countTokens } from '../domains/review';
 
 /**
- * Service for handling AI-powered code review operations
+ * Service for handling Bad Buggy-powered code review operations
  */
 
 // Pure function to build review prompt
@@ -51,6 +51,11 @@ ${chunkContent}
 Respond with ONLY a JSON array, no other text. Do not include explanations, thinking, or any text outside the JSON array. Start your response with [ and end with ].`;
 };
 
+// Helper function to validate severity
+const isValidSeverity = (severity: string): severity is ReviewComment['severity'] => {
+  return ['critical', 'major', 'suggestion'].includes(severity);
+};
+
 // Pure function to parse AI response into ReviewComments
 export const parseAIResponse = (responseContent: string): ReviewComment[] => {
   let comments: ReviewComment[] = [];
@@ -58,26 +63,38 @@ export const parseAIResponse = (responseContent: string): ReviewComment[] => {
   try {
     // Try to parse the full response first
     const parsedResponse = JSON.parse(responseContent);
-    comments = parsedResponse.map((comment: { file: string; line: number; end_line?: number; severity: string; comment: string }) => ({
-      path: comment.file,
-      line: comment.line,
-      end_line: comment.end_line,
-      severity: comment.severity as ReviewComment['severity'],
-      body: comment.comment
-    }));
+    comments = parsedResponse.map((comment: { file: string; line: number; end_line?: number; severity: string; comment: string }) => {
+      if (!isValidSeverity(comment.severity)) {
+        core.warning(`Invalid severity '${comment.severity}' found, defaulting to 'suggestion'`);
+        comment.severity = 'suggestion';
+      }
+      return {
+        path: comment.file,
+        line: comment.line,
+        end_line: comment.end_line,
+        severity: comment.severity as ReviewComment['severity'],
+        body: comment.comment
+      };
+    });
   } catch (e) {
     // If that fails, try to extract JSON from the response
     try {
       const jsonMatch = responseContent.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
         const parsedResponse = JSON.parse(jsonMatch[0]);
-        comments = parsedResponse.map((comment: { file: string; line: number; end_line?: number; severity: string; comment: string }) => ({
-          path: comment.file,
-          line: comment.line,
-          end_line: comment.end_line,
-          severity: comment.severity as ReviewComment['severity'],
-          body: comment.comment
-        }));
+        comments = parsedResponse.map((comment: { file: string; line: number; end_line?: number; severity: string; comment: string }) => {
+          if (!isValidSeverity(comment.severity)) {
+            core.warning(`Invalid severity '${comment.severity}' found, defaulting to 'suggestion'`);
+            comment.severity = 'suggestion';
+          }
+          return {
+            path: comment.file,
+            line: comment.line,
+            end_line: comment.end_line,
+            severity: comment.severity as ReviewComment['severity'],
+            body: comment.comment
+          };
+        });
       } else {
         core.warning('Failed to parse AI response as JSON - no JSON array found');
         core.warning(`Response was: ${responseContent.substring(0, 500)}...`);

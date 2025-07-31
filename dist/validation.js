@@ -48,7 +48,7 @@ const validateInputs = (inputs) => {
     if (!inputs.githubToken || typeof inputs.githubToken !== 'string') {
         errors.push('GitHub token is required');
     }
-    else if (!inputs.githubToken.startsWith('ghp_') && !inputs.githubToken.startsWith('ghs_')) {
+    else if (!inputs.githubToken.startsWith('ghp_') && !inputs.githubToken.startsWith('ghs_') && !inputs.githubToken.startsWith('github_pat_')) {
         errors.push('GitHub token format appears invalid');
     }
     // Validate AI provider

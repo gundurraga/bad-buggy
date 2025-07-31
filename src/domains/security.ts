@@ -11,8 +11,8 @@ export const isUserAllowed = (user: User, allowedUsers: string[]): boolean => {
 };
 
 // Pure function to check if PR is from external fork
-export const isExternalFork = (pr: PullRequest, repoOwner: string): boolean => {
-  return pr.head.ref.includes(':') || pr.user.login !== repoOwner;
+export const isExternalFork = (pr: PullRequest, _repoOwner: string): boolean => {
+  return pr.head.repo.full_name !== pr.base.repo.full_name;
 };
 
 // Pure function to check if workflow files are modified

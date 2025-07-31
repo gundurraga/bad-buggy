@@ -40,7 +40,44 @@ const reviewChunk = async (
   apiKey: string,
   model: string
 ): Promise<{ comments: ReviewComment[]; tokens: TokenUsage }> => {
-  const prompt = `${config.review_prompt}\n\nCode to review:\n${chunk.content}`;
+  const prompt = `${config.review_prompt.replace(
+    "{{DATE}}",
+    new Date().toISOString().split("T")[0]
+  )}
+
+Please review the following code changes and provide feedback as a JSON array of comments.
+Each comment should have:
+- file: the filename
+- line: the line number (from the diff)
+- end_line: (optional) the end line for multi-line comments
+- severity: "critical", "major", "minor", or "suggestion"
+- category: one of ${config.review_aspects.join(", ")}
+- comment: your feedback
+
+Examples of correct JSON responses:
+
+[
+  {
+    "file": "src/auth.js",
+    "line": 45,
+    "severity": "critical",
+    "category": "security_vulnerabilities",
+    "comment": "CRITICAL: SQL injection vulnerability. User input 'userInput' is directly concatenated into query without sanitization. IMPACT: Database compromise, data theft. IMMEDIATE ACTION: Use parameterized queries or ORM methods."
+  },
+  {
+    "file": "src/payment.js", 
+    "line": 78,
+    "end_line": 85,
+    "severity": "major", 
+    "category": "bugs",
+    "comment": "Race condition in payment processing. Multiple concurrent transactions can cause double-charging. IMPACT: Financial loss, customer complaints. IMMEDIATE ACTION: Add transaction locking or atomic operations."
+  }
+]
+
+Code changes:
+${chunk.content}
+
+Respond with ONLY a JSON array, no other text. Do not include explanations, thinking, or any text outside the JSON array. Start your response with [ and end with ].`;
 
   core.info(`🔗 Calling AI provider: ${provider} with model: ${model}`);
   core.info(`📝 Prompt length: ${prompt.length} characters`);
@@ -54,7 +91,43 @@ const reviewChunk = async (
     }"`
   );
 
-  const comments = parseAIResponse(response.content);
+  // Parse JSON response (like the old index.js version)
+  let comments: ReviewComment[] = [];
+  try {
+    // Try to parse the full response first
+    const parsedResponse = JSON.parse(response.content);
+    comments = parsedResponse.map((comment: any) => ({
+      path: comment.file,
+      line: comment.line,
+      end_line: comment.end_line,
+      severity: comment.severity as ReviewComment['severity'],
+      body: comment.comment
+    }));
+  } catch (e) {
+    // If that fails, try to extract JSON from the response
+    try {
+      const jsonMatch = response.content.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        const parsedResponse = JSON.parse(jsonMatch[0]);
+        comments = parsedResponse.map((comment: any) => ({
+          path: comment.file,
+          line: comment.line,
+          end_line: comment.end_line,
+          severity: comment.severity as ReviewComment['severity'],
+          body: comment.comment
+        }));
+      } else {
+        core.warning("Failed to parse AI response as JSON - no JSON array found");
+        core.warning(`Response was: ${response.content.substring(0, 500)}...`);
+        comments = [];
+      }
+    } catch (e2) {
+      core.warning("Failed to parse AI response as JSON");
+      core.warning(`Response was: ${response.content.substring(0, 500)}...`);
+      comments = [];
+    }
+  }
+
   core.info(`💬 Parsed ${comments.length} comments from AI response`);
 
   const tokens: TokenUsage = response.usage

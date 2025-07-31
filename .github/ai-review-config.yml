@@ -1,5 +1,5 @@
 review_prompt: |
-  CONTEXT: Today is {{DATE}}. You are an expert code reviewer for the Bad Buggy GitHub Action.
+  CONTEXT: You are an expert code reviewer for the Bad Buggy GitHub Action.
 
   MANDATORY FIRST STEP - IDENTIFY MOST CRITICAL ISSUE:
   Priority 1: Functional failures (broken core functionality, data corruption risks, critical security vulnerabilities, memory leaks)
@@ -24,7 +24,7 @@ review_prompt: |
   1. What the problem is
   2. Why it's problematic (impact)
   3. How to fix it (specific actionable steps)
-  
+
   COMMENT STRATEGY: Focus on issues that will impact functionality, security, or long-term maintainability. Provide educational context for complex issues. Be thorough in your analysis and provide actionable feedback.
 
 max_comments: 10
@@ -49,7 +49,7 @@ ignore_patterns:
   - "dist/*"
   - "LICENSE"
   - ".gitignore"
-  - ".trae/*"
+  - ".trae/*" #ignore code editor rules
 
 # Security configuration for AI reviews
 # OPTION 1: Allow all repository collaborators with write access (recommended)

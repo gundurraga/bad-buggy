@@ -10,7 +10,14 @@ export declare const extractPRInfo: (pr: PullRequest) => {
 export declare const formatReviewBody: (model: string, totalTokens: {
     input: number;
     output: number;
-}, commentCount: number) => string;
+}, commentCount: number, prInfo?: {
+    title: string;
+    description: string;
+    author: string;
+    filesChanged: string[];
+    additions: number;
+    deletions: number;
+}) => string;
 export declare const createReviewComment: (path: string, line: number, body: string) => {
     path: string;
     line: number;

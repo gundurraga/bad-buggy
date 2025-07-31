@@ -190,6 +190,10 @@ export const run = async (): Promise<void> => {
     }
 
     core.info(`📝 PR #${pr.number}: "${pr.title}" by ${triggeringUser.login}`);
+    core.info(`📄 PR Description: ${pr.body ? pr.body.substring(0, 200) + (pr.body.length > 200 ? '...' : '') : 'No description provided'}`);
+    core.info(`🔗 PR URL: ${pr.html_url}`);
+    core.info(`🌿 Branch: ${pr.head.ref} → ${pr.base.ref}`);
+    core.info(`📊 PR Stats: +${pr.additions || 0} -${pr.deletions || 0} changes in ${pr.changed_files || 0} files`);
 
     // Type assertion for GitHub context
     const typedPr = pr as any;
@@ -256,11 +260,14 @@ export const run = async (): Promise<void> => {
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
       core.info(
-        `🔍 Reviewing chunk ${i + 1}/${chunks.length} (${
-          chunk.content.length
-        } chars)`
+        `🔍 Reviewing chunk ${i + 1}/${chunks.length} (${chunk.content.length} chars)`
       );
-
+      core.info(`📁 Chunk ${i + 1} files: ${chunk.files ? chunk.files.join(', ') : 'N/A'}`);
+      
+      core.info(`🤖 Sending chunk ${i + 1} to AI provider: ${inputs.aiProvider}`);
+      core.info(`🎯 Using model: ${inputs.model}`);
+      
+      const startTime = Date.now();
       const { comments, tokens } = await reviewChunk(
         chunk,
         config,
@@ -268,12 +275,22 @@ export const run = async (): Promise<void> => {
         inputs.apiKey,
         inputs.model
       );
+      const duration = Date.now() - startTime;
 
       core.info(
         `📝 Chunk ${i + 1} results: ${comments.length} comments, ${
           tokens.input
-        } input tokens, ${tokens.output} output tokens`
+        } input tokens, ${tokens.output} output tokens (${duration}ms)`
       );
+      
+      if (comments.length > 0) {
+        core.info(`🔍 Chunk ${i + 1} found issues:`);
+        comments.forEach((comment, idx) => {
+           core.info(`  ${idx + 1}. [${comment.severity}] ${comment.path}:${comment.line} - ${comment.body.substring(0, 100)}${comment.body.length > 100 ? '...' : ''}`);
+         });
+      } else {
+        core.info(`✅ Chunk ${i + 1}: No issues found`);
+      }
 
       allComments = allComments.concat(comments);
       totalTokens = accumulateTokens(totalTokens, tokens);
@@ -285,19 +302,49 @@ export const run = async (): Promise<void> => {
 
     // Process and post comments
     core.info("🔄 Processing and filtering comments...");
+    core.info(`📊 Raw comments by severity:`);
+    const severityCounts = allComments.reduce((acc, comment) => {
+      acc[comment.severity] = (acc[comment.severity] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    Object.entries(severityCounts).forEach(([severity, count]) => {
+      core.info(`  ${severity}: ${count} comments`);
+    });
+    
     const finalComments = processComments(allComments, config);
     core.info(
       `✨ Final comments after processing: ${finalComments.length} (filtered from ${allComments.length})`
     );
+    
+    if (finalComments.length !== allComments.length) {
+      core.info(`🔽 Comments filtered due to:`);
+      core.info(`  - Max comments limit: ${config.max_comments}`);
+      core.info(`  - Severity prioritization: ${config.prioritize_by_severity}`);
+    }
+
+    // Prepare PR information for summary
+    const prInfo = {
+      title: typedPr.title,
+      description: typedPr.body || '',
+      author: triggeringUser.login,
+      filesChanged: modifiedFiles,
+      additions: typedPr.additions || 0,
+      deletions: typedPr.deletions || 0
+    };
 
     const reviewBody = formatReviewBody(
       inputs.model,
       totalTokens,
-      finalComments.length
+      finalComments.length,
+      prInfo
     );
 
     if (finalComments.length > 0) {
       core.info("📤 Posting review to GitHub...");
+      core.info(`📝 Review summary length: ${reviewBody.length} characters`);
+      core.info(`💬 Individual comments to post: ${finalComments.length}`);
+      
+      const postStartTime = Date.now();
       await postReview(
         octokit,
         typedContext,
@@ -305,14 +352,21 @@ export const run = async (): Promise<void> => {
         finalComments,
         reviewBody
       );
-      core.info(`✅ Posted ${finalComments.length} review comments`);
+      const postDuration = Date.now() - postStartTime;
+      core.info(`✅ Posted ${finalComments.length} review comments (${postDuration}ms)`);
     } else {
       core.info("ℹ️ No issues found in the code - posting summary comment");
+      core.info(`📝 Summary-only review length: ${reviewBody.length} characters`);
+      
+      const postStartTime = Date.now();
       // Post a summary even when no issues found
       await postReview(octokit, typedContext, typedPr, [], reviewBody);
+      const postDuration = Date.now() - postStartTime;
+      core.info(`✅ Posted summary review (${postDuration}ms)`);
     }
 
     // Report cost
+    core.info("💰 Calculating review costs...");
     const cost = calculateCost(inputs.model, totalTokens);
     const costMessage = `💰 AI Review Cost: ${formatCost(
       cost.totalCost
@@ -320,6 +374,17 @@ export const run = async (): Promise<void> => {
       cost.outputCost
     )} output)`;
     core.info(costMessage);
+    
+    // Additional cost details
+    core.info(`📊 Token breakdown:`);
+    core.info(`  Input tokens: ${totalTokens.input} (${formatCost(cost.inputCost)})`);
+    core.info(`  Output tokens: ${totalTokens.output} (${formatCost(cost.outputCost)})`);
+    core.info(`  Total tokens: ${totalTokens.input + totalTokens.output}`);
+    core.info(`💵 Cost per review: ${formatCost(cost.totalCost)}`);
+    if (cost.totalCost > 0) {
+      const reviewsPerDollar = Math.floor(1 / cost.totalCost);
+      core.info(`📈 Reviews per dollar: ~${reviewsPerDollar}`);
+    }
 
     core.info("🎉 AI Code Review completed successfully!");
   } catch (error) {

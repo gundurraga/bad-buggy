@@ -193,7 +193,7 @@ exports.createReviewComment = createReviewComment;
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.parseAIResponse = exports.processComments = exports.chunkDiff = exports.shouldIgnoreFile = exports.countTokens = void 0;
+exports.processComments = exports.chunkDiff = exports.shouldIgnoreFile = exports.countTokens = void 0;
 // Pure function to count tokens
 const countTokens = (text, model) => {
     let avgCharsPerToken = 3.5; // Default conservative estimate
@@ -260,61 +260,6 @@ const processComments = (comments, config) => {
     return sortedComments.slice(0, config.max_comments);
 };
 exports.processComments = processComments;
-// Pure function to parse AI response into comments
-const parseAIResponse = (response) => {
-    const comments = [];
-    const lines = response.split('\n');
-    let currentComment = {};
-    let inCommentBlock = false;
-    for (const line of lines) {
-        const trimmedLine = line.trim();
-        // Look for comment markers
-        if (trimmedLine.startsWith('**File:**') || trimmedLine.startsWith('File:')) {
-            if (currentComment.path && currentComment.body) {
-                comments.push(currentComment);
-            }
-            currentComment = {};
-            currentComment.path = trimmedLine.replace(/\*\*File:\*\*|File:/, '').trim();
-            inCommentBlock = true;
-        }
-        else if (trimmedLine.startsWith('**Line:**') || trimmedLine.startsWith('Line:')) {
-            const lineMatch = trimmedLine.match(/\d+/);
-            if (lineMatch) {
-                currentComment.line = parseInt(lineMatch[0]);
-            }
-        }
-        else if (trimmedLine.startsWith('**Severity:**') || trimmedLine.startsWith('Severity:')) {
-            const severity = trimmedLine.replace(/\*\*Severity:\*\*|Severity:/, '').trim().toLowerCase();
-            if (['critical', 'major', 'minor', 'info'].includes(severity)) {
-                currentComment.severity = severity;
-            }
-            else {
-                currentComment.severity = 'info';
-            }
-        }
-        else if (trimmedLine.startsWith('**Comment:**') || trimmedLine.startsWith('Comment:')) {
-            currentComment.body = trimmedLine.replace(/\*\*Comment:\*\*|Comment:/, '').trim();
-        }
-        else if (inCommentBlock && trimmedLine && !trimmedLine.startsWith('**') && !trimmedLine.startsWith('---')) {
-            // Continue building the comment body
-            if (currentComment.body) {
-                currentComment.body += ' ' + trimmedLine;
-            }
-            else {
-                currentComment.body = trimmedLine;
-            }
-        }
-    }
-    // Add the last comment if it exists
-    if (currentComment.path && currentComment.body) {
-        comments.push(currentComment);
-    }
-    return comments.filter(comment => comment.path &&
-        comment.line &&
-        comment.body &&
-        comment.severity);
-};
-exports.parseAIResponse = parseAIResponse;
 //# sourceMappingURL=review.js.map
 
 /***/ }),
@@ -637,13 +582,8 @@ exports.run = void 0;
 const core = __importStar(__nccwpck_require__(2186));
 const github = __importStar(__nccwpck_require__(5438));
 const config_1 = __nccwpck_require__(1677);
-const validation_1 = __nccwpck_require__(844);
-const security_1 = __nccwpck_require__(1022);
-const review_1 = __nccwpck_require__(7650);
-const cost_1 = __nccwpck_require__(4952);
-const github_1 = __nccwpck_require__(8790);
-const ai_api_1 = __nccwpck_require__(1884);
-const github_api_1 = __nccwpck_require__(568);
+const workflow_1 = __nccwpck_require__(7336);
+const logger_1 = __nccwpck_require__(9741);
 // Pure function to get action inputs
 const getActionInputs = () => {
     return {
@@ -654,9 +594,101 @@ const getActionInputs = () => {
         configFile: core.getInput("config-file") || ".github/ai-review-config.yml",
     };
 };
-// Effect: Review a single chunk
-const reviewChunk = async (chunk, config, provider, apiKey, model) => {
-    const prompt = `${config.review_prompt.replace("{{DATE}}", new Date().toISOString().split("T")[0])}
+// Main execution function
+const run = async () => {
+    try {
+        logger_1.Logger.startup();
+        // Get and validate inputs
+        const inputs = getActionInputs();
+        logger_1.Logger.inputs(inputs.aiProvider, inputs.model, inputs.configFile);
+        // Load and validate configuration
+        logger_1.Logger.configLoading(inputs.configFile);
+        const config = await (0, config_1.loadConfig)(inputs.configFile);
+        logger_1.Logger.configLoaded(config.max_comments, config.prioritize_by_severity);
+        // Initialize GitHub client and context
+        const octokit = github.getOctokit(inputs.githubToken);
+        const context = github.context;
+        logger_1.Logger.githubInit(context.repo.owner, context.repo.repo, context.eventName);
+        // Create workflow orchestrator
+        const workflow = new workflow_1.ReviewWorkflow(octokit, context, inputs, config);
+        // Execute workflow steps
+        await workflow.validateInputs();
+        await workflow.validateConfig();
+        const { pr, triggeringUser, repoOwner } = await workflow.validatePullRequest();
+        const modifiedFiles = await workflow.performSecurityChecks(pr, triggeringUser, repoOwner);
+        await workflow.checkUserPermissions(triggeringUser, repoOwner);
+        const { comments, tokens } = await workflow.processAndReviewDiff();
+        if (comments.length === 0 && tokens.input === 0) {
+            return; // No files to review
+        }
+        await workflow.processAndPostComments(comments, tokens, modifiedFiles, pr, triggeringUser);
+        await workflow.reportCosts(tokens);
+        logger_1.Logger.completion();
+    }
+    catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logger_1.Logger.error(errorMessage);
+    }
+};
+exports.run = run;
+// Execute if this is the main module
+if (require.main === require.cache[eval('__filename')]) {
+    (0, exports.run)();
+}
+//# sourceMappingURL=main.js.map
+
+/***/ }),
+
+/***/ 1821:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.reviewChunk = exports.parseAIResponse = exports.buildReviewPrompt = void 0;
+const core = __importStar(__nccwpck_require__(2186));
+const ai_api_1 = __nccwpck_require__(1884);
+const review_1 = __nccwpck_require__(7650);
+/**
+ * Service for handling AI-powered code review operations
+ */
+// Pure function to build review prompt
+const buildReviewPrompt = (config, chunkContent) => {
+    const basePrompt = config.review_prompt.replace('{{DATE}}', new Date().toISOString().split('T')[0]);
+    return `${basePrompt}
 
 Please review the following code changes and provide feedback as a JSON array of comments.
 Each comment should have:
@@ -664,7 +696,7 @@ Each comment should have:
 - line: the line number (from the diff)
 - end_line: (optional) the end line for multi-line comments
 - severity: "critical", "major", "minor", or "suggestion"
-- category: one of ${config.review_aspects.join(", ")}
+- category: one of ${config.review_aspects.join(', ')}
 - comment: your feedback
 
 Examples of correct JSON responses:
@@ -688,19 +720,17 @@ Examples of correct JSON responses:
 ]
 
 Code changes:
-${chunk.content}
+${chunkContent}
 
 Respond with ONLY a JSON array, no other text. Do not include explanations, thinking, or any text outside the JSON array. Start your response with [ and end with ].`;
-    core.info(`🔗 Calling AI provider: ${provider} with model: ${model}`);
-    core.info(`📝 Prompt length: ${prompt.length} characters`);
-    const response = await (0, ai_api_1.callAIProvider)(provider, prompt, apiKey, model);
-    core.info(`🤖 AI Response received: ${response.content.length} characters`);
-    core.info(`📊 AI Response preview: "${response.content.substring(0, 200)}${response.content.length > 200 ? "..." : ""}"`);
-    // Parse JSON response (like the old index.js version)
+};
+exports.buildReviewPrompt = buildReviewPrompt;
+// Pure function to parse AI response into ReviewComments
+const parseAIResponse = (responseContent) => {
     let comments = [];
     try {
         // Try to parse the full response first
-        const parsedResponse = JSON.parse(response.content);
+        const parsedResponse = JSON.parse(responseContent);
         comments = parsedResponse.map((comment) => ({
             path: comment.file,
             line: comment.line,
@@ -712,7 +742,7 @@ Respond with ONLY a JSON array, no other text. Do not include explanations, thin
     catch (e) {
         // If that fails, try to extract JSON from the response
         try {
-            const jsonMatch = response.content.match(/\[[\s\S]*\]/);
+            const jsonMatch = responseContent.match(/\[[\s\S]*\]/);
             if (jsonMatch) {
                 const parsedResponse = JSON.parse(jsonMatch[0]);
                 comments = parsedResponse.map((comment) => ({
@@ -724,17 +754,29 @@ Respond with ONLY a JSON array, no other text. Do not include explanations, thin
                 }));
             }
             else {
-                core.warning("Failed to parse AI response as JSON - no JSON array found");
-                core.warning(`Response was: ${response.content.substring(0, 500)}...`);
+                core.warning('Failed to parse AI response as JSON - no JSON array found');
+                core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
                 comments = [];
             }
         }
         catch (e2) {
-            core.warning("Failed to parse AI response as JSON");
-            core.warning(`Response was: ${response.content.substring(0, 500)}...`);
+            core.warning('Failed to parse AI response as JSON');
+            core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
             comments = [];
         }
     }
+    return comments;
+};
+exports.parseAIResponse = parseAIResponse;
+// Effect: Review a single chunk
+const reviewChunk = async (chunk, config, provider, apiKey, model) => {
+    const prompt = (0, exports.buildReviewPrompt)(config, chunk.content);
+    core.info(`🔗 Calling AI provider: ${provider} with model: ${model}`);
+    core.info(`📝 Prompt length: ${prompt.length} characters`);
+    const response = await (0, ai_api_1.callAIProvider)(provider, prompt, apiKey, model);
+    core.info(`🤖 AI Response received: ${response.content.length} characters`);
+    core.info(`📊 AI Response preview: "${response.content.substring(0, 200)}${response.content.length > 200 ? '...' : ''}"`);
+    const comments = (0, exports.parseAIResponse)(response.content);
     core.info(`💬 Parsed ${comments.length} comments from AI response`);
     const tokens = response.usage
         ? {
@@ -747,173 +789,350 @@ Respond with ONLY a JSON array, no other text. Do not include explanations, thin
         };
     return { comments, tokens };
 };
-// Main execution function
-const run = async () => {
-    try {
-        core.info("🚀 Starting AI Code Review Action");
-        // Get and validate inputs
-        core.info("📋 Getting action inputs...");
-        const inputs = getActionInputs();
-        core.info(`✅ Inputs loaded: provider=${inputs.aiProvider}, model=${inputs.model}, config=${inputs.configFile}`);
-        const inputValidation = (0, validation_1.validateInputs)(inputs);
-        (0, validation_1.validateAndThrow)(inputValidation, "Input validation failed");
-        core.info("✅ Input validation passed");
-        // Load and validate configuration
-        core.info(`📄 Loading configuration from ${inputs.configFile}...`);
-        const config = await (0, config_1.loadConfig)(inputs.configFile);
-        core.info(`✅ Configuration loaded: max_comments=${config.max_comments}, prioritize_by_severity=${config.prioritize_by_severity}`);
-        const configValidation = (0, validation_1.validateConfig)(config);
-        (0, validation_1.validateAndThrow)(configValidation, "Configuration validation failed");
-        core.info("✅ Configuration validation passed");
-        // Initialize GitHub client
-        core.info("🔧 Initializing GitHub client...");
-        const octokit = github.getOctokit(inputs.githubToken);
-        const context = github.context;
-        const pr = context.payload.pull_request;
-        const triggeringUser = context.payload.sender;
-        const repoOwner = context.repo.owner;
-        core.info(`📊 GitHub context: repo=${context.repo.owner}/${context.repo.repo}, event=${context.eventName}`);
+exports.reviewChunk = reviewChunk;
+//# sourceMappingURL=ai-review.js.map
+
+/***/ }),
+
+/***/ 9741:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.Logger = void 0;
+const core = __importStar(__nccwpck_require__(2186));
+const cost_1 = __nccwpck_require__(4952);
+/**
+ * Centralized logging service for consistent and organized output
+ */
+class Logger {
+    static startup() {
+        core.info('🚀 Starting AI Code Review Action');
+    }
+    static inputs(provider, model, configFile) {
+        core.info('📋 Getting action inputs...');
+        core.info(`✅ Inputs loaded: provider=${provider}, model=${model}, config=${configFile}`);
+    }
+    static inputValidation() {
+        core.info('✅ Input validation passed');
+    }
+    static configLoading(configFile) {
+        core.info(`📄 Loading configuration from ${configFile}...`);
+    }
+    static configLoaded(maxComments, prioritizeBySeverity) {
+        core.info(`✅ Configuration loaded: max_comments=${maxComments}, prioritize_by_severity=${prioritizeBySeverity}`);
+    }
+    static configValidation() {
+        core.info('✅ Configuration validation passed');
+    }
+    static githubInit(owner, repo, eventName) {
+        core.info('🔧 Initializing GitHub client...');
+        core.info(`📊 GitHub context: repo=${owner}/${repo}, event=${eventName}`);
+    }
+    static prInfo(number, title, author, body, url, headRef, baseRef, additions, deletions, changedFiles) {
+        core.info(`📝 PR #${number}: "${title}" by ${author}`);
+        core.info(`📄 PR Description: ${body ? body.substring(0, 200) + (body.length > 200 ? '...' : '') : 'No description provided'}`);
+        core.info(`🔗 PR URL: ${url}`);
+        core.info(`🌿 Branch: ${headRef} → ${baseRef}`);
+        core.info(`📊 PR Stats: +${additions} -${deletions} changes in ${changedFiles} files`);
+    }
+    static securityCheck() {
+        core.info('🔒 Performing security checks...');
+    }
+    static modifiedFiles(files) {
+        core.info(`📁 Modified files (${files.length}): ${files.join(', ')}`);
+    }
+    static securityPassed() {
+        core.info('✅ Security checks passed');
+    }
+    static userPermissionCheck(username) {
+        core.info(`👤 Checking permissions for user: ${username}`);
+    }
+    static userPermissionLevel(level) {
+        core.info(`🔑 User permission level: ${level}`);
+    }
+    static userPermissionsPassed() {
+        core.info('✅ User permissions verified');
+    }
+    static diffProcessing() {
+        core.info('📊 Processing diff and creating chunks...');
+    }
+    static chunksCreated(count) {
+        core.info(`📦 Created ${count} chunks for review`);
+    }
+    static noFilesToReview() {
+        core.info('⚠️ No files to review after applying ignore patterns');
+    }
+    static reviewStart() {
+        core.info('🤖 Starting AI review process...');
+    }
+    static chunkReview(current, total, contentLength, files) {
+        core.info(`🔍 Reviewing chunk ${current}/${total} (${contentLength} chars)`);
+        core.info(`📁 Chunk ${current} files: ${files ? files.join(', ') : 'N/A'}`);
+    }
+    static aiProviderCall(current, provider, model) {
+        core.info(`🤖 Sending chunk ${current} to AI provider: ${provider}`);
+        core.info(`🎯 Using model: ${model}`);
+    }
+    static chunkResults(current, commentCount, inputTokens, outputTokens, duration) {
+        core.info(`📝 Chunk ${current} results: ${commentCount} comments, ${inputTokens} input tokens, ${outputTokens} output tokens (${duration}ms)`);
+    }
+    static chunkIssues(current, comments) {
+        if (comments.length > 0) {
+            core.info(`🔍 Chunk ${current} found issues:`);
+            comments.forEach((comment, idx) => {
+                core.info(`  ${idx + 1}. [${comment.severity}] ${comment.path}:${comment.line} - ${comment.body.substring(0, 100)}${comment.body.length > 100 ? '...' : ''}`);
+            });
+        }
+        else {
+            core.info(`✅ Chunk ${current}: No issues found`);
+        }
+    }
+    static totalResults(commentCount, inputTokens, outputTokens) {
+        core.info(`📊 Total review results: ${commentCount} raw comments, ${inputTokens} input tokens, ${outputTokens} output tokens`);
+    }
+    static commentProcessing() {
+        core.info('🔄 Processing and filtering comments...');
+    }
+    static severityBreakdown(severityCounts) {
+        core.info('📊 Raw comments by severity:');
+        Object.entries(severityCounts).forEach(([severity, count]) => {
+            core.info(`  ${severity}: ${count} comments`);
+        });
+    }
+    static finalComments(finalCount, originalCount) {
+        core.info(`✨ Final comments after processing: ${finalCount} (filtered from ${originalCount})`);
+    }
+    static filteringReasons(maxComments, prioritizeBySeverity) {
+        core.info('🔽 Comments filtered due to:');
+        core.info(`  - Max comments limit: ${maxComments}`);
+        core.info(`  - Severity prioritization: ${prioritizeBySeverity}`);
+    }
+    static postingReview(summaryLength, commentCount) {
+        core.info('📤 Posting review to GitHub...');
+        core.info(`📝 Review summary length: ${summaryLength} characters`);
+        core.info(`💬 Individual comments to post: ${commentCount}`);
+    }
+    static reviewPosted(commentCount, duration) {
+        core.info(`✅ Posted ${commentCount} review comments (${duration}ms)`);
+    }
+    static summaryOnly(summaryLength) {
+        core.info('ℹ️ No issues found in the code - posting summary comment');
+        core.info(`📝 Summary-only review length: ${summaryLength} characters`);
+    }
+    static summaryPosted(duration) {
+        core.info(`✅ Posted summary review (${duration}ms)`);
+    }
+    static costCalculation() {
+        core.info('💰 Calculating review costs...');
+    }
+    static costSummary(totalCost, inputCost, outputCost) {
+        const costMessage = `💰 AI Review Cost: ${(0, cost_1.formatCost)(totalCost)} (${(0, cost_1.formatCost)(inputCost)} input + ${(0, cost_1.formatCost)(outputCost)} output)`;
+        core.info(costMessage);
+    }
+    static costBreakdown(tokens, inputCost, outputCost, totalCost) {
+        core.info('📊 Token breakdown:');
+        core.info(`  Input tokens: ${tokens.input} (${(0, cost_1.formatCost)(inputCost)})`);
+        core.info(`  Output tokens: ${tokens.output} (${(0, cost_1.formatCost)(outputCost)})`);
+        core.info(`  Total tokens: ${tokens.input + tokens.output}`);
+        core.info(`💵 Cost per review: ${(0, cost_1.formatCost)(totalCost)}`);
+        if (totalCost > 0) {
+            const reviewsPerDollar = Math.floor(1 / totalCost);
+            core.info(`📈 Reviews per dollar: ~${reviewsPerDollar}`);
+        }
+    }
+    static completion() {
+        core.info('🎉 AI Code Review completed successfully!');
+    }
+    static error(message) {
+        core.setFailed(`Action failed: ${message}`);
+    }
+}
+exports.Logger = Logger;
+//# sourceMappingURL=logger.js.map
+
+/***/ }),
+
+/***/ 7336:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.ReviewWorkflow = void 0;
+const validation_1 = __nccwpck_require__(844);
+const security_1 = __nccwpck_require__(1022);
+const review_1 = __nccwpck_require__(7650);
+const cost_1 = __nccwpck_require__(4952);
+const github_1 = __nccwpck_require__(8790);
+const github_api_1 = __nccwpck_require__(568);
+const ai_review_1 = __nccwpck_require__(1821);
+const logger_1 = __nccwpck_require__(9741);
+/**
+ * Workflow orchestrator for the AI code review process
+ */
+class ReviewWorkflow {
+    constructor(octokit, context, inputs, config) {
+        this.octokit = octokit;
+        this.context = context;
+        this.inputs = inputs;
+        this.config = config;
+    }
+    async validateInputs() {
+        const inputValidation = (0, validation_1.validateInputs)(this.inputs);
+        (0, validation_1.validateAndThrow)(inputValidation, 'Input validation failed');
+        logger_1.Logger.inputValidation();
+    }
+    async validateConfig() {
+        const configValidation = (0, validation_1.validateConfig)(this.config);
+        (0, validation_1.validateAndThrow)(configValidation, 'Configuration validation failed');
+        logger_1.Logger.configValidation();
+    }
+    async validatePullRequest() {
+        const pr = this.context.payload.pull_request;
+        const triggeringUser = this.context.payload.sender;
+        const repoOwner = this.context.repo.owner;
         if (!pr || !triggeringUser) {
-            core.setFailed("This action can only be run on pull requests with a valid sender");
-            return;
+            throw new Error('This action can only be run on pull requests with a valid sender');
         }
-        core.info(`📝 PR #${pr.number}: "${pr.title}" by ${triggeringUser.login}`);
-        core.info(`📄 PR Description: ${pr.body ? pr.body.substring(0, 200) + (pr.body.length > 200 ? '...' : '') : 'No description provided'}`);
-        core.info(`🔗 PR URL: ${pr.html_url}`);
-        core.info(`🌿 Branch: ${pr.head.ref} → ${pr.base.ref}`);
-        core.info(`📊 PR Stats: +${pr.additions || 0} -${pr.deletions || 0} changes in ${pr.changed_files || 0} files`);
-        // Type assertion for GitHub context
-        const typedPr = pr;
-        const typedContext = context;
-        // Security check
-        core.info("🔒 Performing security checks...");
-        const diff = await (0, github_api_1.getPRDiff)(octokit, typedContext, typedPr);
+        logger_1.Logger.prInfo(pr.number, pr.title || 'No title', triggeringUser.login, pr.body || null, pr.html_url || '', pr.head?.ref || 'unknown', pr.base?.ref || 'unknown', pr.additions || 0, pr.deletions || 0, pr.changed_files || 0);
+        return { pr, triggeringUser, repoOwner };
+    }
+    async performSecurityChecks(pr, triggeringUser, repoOwner) {
+        logger_1.Logger.securityCheck();
+        const diff = await (0, github_api_1.getPRDiff)(this.octokit, this.context, pr);
         const modifiedFiles = diff.map((file) => file.filename);
-        core.info(`📁 Modified files (${modifiedFiles.length}): ${modifiedFiles.join(", ")}`);
-        const securityCheck = (0, security_1.validateSecurity)(typedPr, triggeringUser, repoOwner, config, modifiedFiles);
+        logger_1.Logger.modifiedFiles(modifiedFiles);
+        const securityCheck = (0, security_1.validateSecurity)(pr, triggeringUser, repoOwner, this.config, modifiedFiles);
         if (!securityCheck.allowed) {
-            core.setFailed(securityCheck.message || "Security check failed");
-            return;
+            throw new Error(securityCheck.message || 'Security check failed');
         }
-        core.info("✅ Security checks passed");
-        // Check user permissions
-        core.info(`👤 Checking permissions for user: ${triggeringUser.login}`);
-        const userPermission = await (0, github_api_1.checkUserPermissions)(octokit, repoOwner, context.repo.repo, triggeringUser.login);
-        core.info(`🔑 User permission level: ${userPermission}`);
-        if (!["admin", "write"].includes(userPermission) &&
+        logger_1.Logger.securityPassed();
+        return modifiedFiles;
+    }
+    async checkUserPermissions(triggeringUser, repoOwner) {
+        logger_1.Logger.userPermissionCheck(triggeringUser.login);
+        const userPermission = await (0, github_api_1.checkUserPermissions)(this.octokit, repoOwner, this.context.repo.repo, triggeringUser.login);
+        logger_1.Logger.userPermissionLevel(userPermission);
+        if (!['admin', 'write'].includes(userPermission) &&
             triggeringUser.login !== repoOwner) {
-            core.setFailed("User does not have sufficient permissions to trigger AI reviews");
-            return;
+            throw new Error('User does not have sufficient permissions to trigger AI reviews');
         }
-        core.info("✅ User permissions verified");
-        // Process diff
-        core.info("📊 Processing diff and creating chunks...");
-        const chunks = (0, review_1.chunkDiff)(diff, config);
-        core.info(`📦 Created ${chunks.length} chunks for review`);
+        logger_1.Logger.userPermissionsPassed();
+    }
+    async processAndReviewDiff() {
+        logger_1.Logger.diffProcessing();
+        const pr = this.context.payload.pull_request;
+        if (!pr) {
+            throw new Error('Pull request not found in context');
+        }
+        const diff = await (0, github_api_1.getPRDiff)(this.octokit, this.context, pr);
+        const chunks = (0, review_1.chunkDiff)(diff, this.config);
+        logger_1.Logger.chunksCreated(chunks.length);
         if (chunks.length === 0) {
-            core.info("⚠️ No files to review after applying ignore patterns");
-            return;
+            logger_1.Logger.noFilesToReview();
+            return { comments: [], tokens: { input: 0, output: 0 } };
         }
-        // Review chunks and accumulate results
-        core.info("🤖 Starting AI review process...");
+        logger_1.Logger.reviewStart();
         let allComments = [];
         let totalTokens = { input: 0, output: 0 };
         for (let i = 0; i < chunks.length; i++) {
             const chunk = chunks[i];
-            core.info(`🔍 Reviewing chunk ${i + 1}/${chunks.length} (${chunk.content.length} chars)`);
-            core.info(`📁 Chunk ${i + 1} files: ${chunk.files ? chunk.files.join(', ') : 'N/A'}`);
-            core.info(`🤖 Sending chunk ${i + 1} to AI provider: ${inputs.aiProvider}`);
-            core.info(`🎯 Using model: ${inputs.model}`);
+            const chunkNumber = i + 1;
+            logger_1.Logger.chunkReview(chunkNumber, chunks.length, chunk.content.length, chunk.files);
+            logger_1.Logger.aiProviderCall(chunkNumber, this.inputs.aiProvider, this.inputs.model);
             const startTime = Date.now();
-            const { comments, tokens } = await reviewChunk(chunk, config, inputs.aiProvider, inputs.apiKey, inputs.model);
+            const { comments, tokens } = await (0, ai_review_1.reviewChunk)(chunk, this.config, this.inputs.aiProvider, this.inputs.apiKey, this.inputs.model);
             const duration = Date.now() - startTime;
-            core.info(`📝 Chunk ${i + 1} results: ${comments.length} comments, ${tokens.input} input tokens, ${tokens.output} output tokens (${duration}ms)`);
-            if (comments.length > 0) {
-                core.info(`🔍 Chunk ${i + 1} found issues:`);
-                comments.forEach((comment, idx) => {
-                    core.info(`  ${idx + 1}. [${comment.severity}] ${comment.path}:${comment.line} - ${comment.body.substring(0, 100)}${comment.body.length > 100 ? '...' : ''}`);
-                });
-            }
-            else {
-                core.info(`✅ Chunk ${i + 1}: No issues found`);
-            }
+            logger_1.Logger.chunkResults(chunkNumber, comments.length, tokens.input, tokens.output, duration);
+            logger_1.Logger.chunkIssues(chunkNumber, comments);
             allComments = allComments.concat(comments);
             totalTokens = (0, cost_1.accumulateTokens)(totalTokens, tokens);
         }
-        core.info(`📊 Total review results: ${allComments.length} raw comments, ${totalTokens.input} input tokens, ${totalTokens.output} output tokens`);
-        // Process and post comments
-        core.info("🔄 Processing and filtering comments...");
-        core.info(`📊 Raw comments by severity:`);
+        logger_1.Logger.totalResults(allComments.length, totalTokens.input, totalTokens.output);
+        return { comments: allComments, tokens: totalTokens };
+    }
+    async processAndPostComments(allComments, totalTokens, modifiedFiles, pr, triggeringUser) {
+        logger_1.Logger.commentProcessing();
+        // Log severity breakdown
         const severityCounts = allComments.reduce((acc, comment) => {
             acc[comment.severity] = (acc[comment.severity] || 0) + 1;
             return acc;
         }, {});
-        Object.entries(severityCounts).forEach(([severity, count]) => {
-            core.info(`  ${severity}: ${count} comments`);
-        });
-        const finalComments = (0, review_1.processComments)(allComments, config);
-        core.info(`✨ Final comments after processing: ${finalComments.length} (filtered from ${allComments.length})`);
+        logger_1.Logger.severityBreakdown(severityCounts);
+        const finalComments = (0, review_1.processComments)(allComments, this.config);
+        logger_1.Logger.finalComments(finalComments.length, allComments.length);
         if (finalComments.length !== allComments.length) {
-            core.info(`🔽 Comments filtered due to:`);
-            core.info(`  - Max comments limit: ${config.max_comments}`);
-            core.info(`  - Severity prioritization: ${config.prioritize_by_severity}`);
+            logger_1.Logger.filteringReasons(this.config.max_comments, this.config.prioritize_by_severity);
         }
         // Prepare PR information for summary
         const prInfo = {
-            title: typedPr.title,
-            description: typedPr.body || '',
+            title: pr.title || 'No title',
+            description: pr.body || '',
             author: triggeringUser.login,
             filesChanged: modifiedFiles,
-            additions: typedPr.additions || 0,
-            deletions: typedPr.deletions || 0
+            additions: pr.additions || 0,
+            deletions: pr.deletions || 0
         };
-        const reviewBody = (0, github_1.formatReviewBody)(inputs.model, totalTokens, finalComments.length, prInfo);
+        const reviewBody = (0, github_1.formatReviewBody)(this.inputs.model, totalTokens, finalComments.length, prInfo);
         if (finalComments.length > 0) {
-            core.info("📤 Posting review to GitHub...");
-            core.info(`📝 Review summary length: ${reviewBody.length} characters`);
-            core.info(`💬 Individual comments to post: ${finalComments.length}`);
+            logger_1.Logger.postingReview(reviewBody.length, finalComments.length);
             const postStartTime = Date.now();
-            await (0, github_api_1.postReview)(octokit, typedContext, typedPr, finalComments, reviewBody);
+            await (0, github_api_1.postReview)(this.octokit, this.context, pr, finalComments, reviewBody);
             const postDuration = Date.now() - postStartTime;
-            core.info(`✅ Posted ${finalComments.length} review comments (${postDuration}ms)`);
+            logger_1.Logger.reviewPosted(finalComments.length, postDuration);
         }
         else {
-            core.info("ℹ️ No issues found in the code - posting summary comment");
-            core.info(`📝 Summary-only review length: ${reviewBody.length} characters`);
+            logger_1.Logger.summaryOnly(reviewBody.length);
             const postStartTime = Date.now();
-            // Post a summary even when no issues found
-            await (0, github_api_1.postReview)(octokit, typedContext, typedPr, [], reviewBody);
+            await (0, github_api_1.postReview)(this.octokit, this.context, pr, [], reviewBody);
             const postDuration = Date.now() - postStartTime;
-            core.info(`✅ Posted summary review (${postDuration}ms)`);
+            logger_1.Logger.summaryPosted(postDuration);
         }
-        // Report cost
-        core.info("💰 Calculating review costs...");
-        const cost = (0, cost_1.calculateCost)(inputs.model, totalTokens);
-        const costMessage = `💰 AI Review Cost: ${(0, cost_1.formatCost)(cost.totalCost)} (${(0, cost_1.formatCost)(cost.inputCost)} input + ${(0, cost_1.formatCost)(cost.outputCost)} output)`;
-        core.info(costMessage);
-        // Additional cost details
-        core.info(`📊 Token breakdown:`);
-        core.info(`  Input tokens: ${totalTokens.input} (${(0, cost_1.formatCost)(cost.inputCost)})`);
-        core.info(`  Output tokens: ${totalTokens.output} (${(0, cost_1.formatCost)(cost.outputCost)})`);
-        core.info(`  Total tokens: ${totalTokens.input + totalTokens.output}`);
-        core.info(`💵 Cost per review: ${(0, cost_1.formatCost)(cost.totalCost)}`);
-        if (cost.totalCost > 0) {
-            const reviewsPerDollar = Math.floor(1 / cost.totalCost);
-            core.info(`📈 Reviews per dollar: ~${reviewsPerDollar}`);
-        }
-        core.info("🎉 AI Code Review completed successfully!");
     }
-    catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        core.setFailed(`Action failed: ${errorMessage}`);
+    async reportCosts(totalTokens) {
+        logger_1.Logger.costCalculation();
+        const cost = (0, cost_1.calculateCost)(this.inputs.model, totalTokens);
+        logger_1.Logger.costSummary(cost.totalCost, cost.inputCost, cost.outputCost);
+        logger_1.Logger.costBreakdown(totalTokens, cost.inputCost, cost.outputCost, cost.totalCost);
     }
-};
-exports.run = run;
-// Execute if this is the main module
-if (require.main === require.cache[eval('__filename')]) {
-    (0, exports.run)();
 }
-//# sourceMappingURL=main.js.map
+exports.ReviewWorkflow = ReviewWorkflow;
+//# sourceMappingURL=workflow.js.map
 
 /***/ }),
 

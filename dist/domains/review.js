@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.parseAIResponse = exports.processComments = exports.chunkDiff = exports.shouldIgnoreFile = exports.countTokens = void 0;
+exports.processComments = exports.chunkDiff = exports.shouldIgnoreFile = exports.countTokens = void 0;
 // Pure function to count tokens
 const countTokens = (text, model) => {
     let avgCharsPerToken = 3.5; // Default conservative estimate
@@ -67,59 +67,4 @@ const processComments = (comments, config) => {
     return sortedComments.slice(0, config.max_comments);
 };
 exports.processComments = processComments;
-// Pure function to parse AI response into comments
-const parseAIResponse = (response) => {
-    const comments = [];
-    const lines = response.split('\n');
-    let currentComment = {};
-    let inCommentBlock = false;
-    for (const line of lines) {
-        const trimmedLine = line.trim();
-        // Look for comment markers
-        if (trimmedLine.startsWith('**File:**') || trimmedLine.startsWith('File:')) {
-            if (currentComment.path && currentComment.body) {
-                comments.push(currentComment);
-            }
-            currentComment = {};
-            currentComment.path = trimmedLine.replace(/\*\*File:\*\*|File:/, '').trim();
-            inCommentBlock = true;
-        }
-        else if (trimmedLine.startsWith('**Line:**') || trimmedLine.startsWith('Line:')) {
-            const lineMatch = trimmedLine.match(/\d+/);
-            if (lineMatch) {
-                currentComment.line = parseInt(lineMatch[0]);
-            }
-        }
-        else if (trimmedLine.startsWith('**Severity:**') || trimmedLine.startsWith('Severity:')) {
-            const severity = trimmedLine.replace(/\*\*Severity:\*\*|Severity:/, '').trim().toLowerCase();
-            if (['critical', 'major', 'minor', 'info'].includes(severity)) {
-                currentComment.severity = severity;
-            }
-            else {
-                currentComment.severity = 'info';
-            }
-        }
-        else if (trimmedLine.startsWith('**Comment:**') || trimmedLine.startsWith('Comment:')) {
-            currentComment.body = trimmedLine.replace(/\*\*Comment:\*\*|Comment:/, '').trim();
-        }
-        else if (inCommentBlock && trimmedLine && !trimmedLine.startsWith('**') && !trimmedLine.startsWith('---')) {
-            // Continue building the comment body
-            if (currentComment.body) {
-                currentComment.body += ' ' + trimmedLine;
-            }
-            else {
-                currentComment.body = trimmedLine;
-            }
-        }
-    }
-    // Add the last comment if it exists
-    if (currentComment.path && currentComment.body) {
-        comments.push(currentComment);
-    }
-    return comments.filter(comment => comment.path &&
-        comment.line &&
-        comment.body &&
-        comment.severity);
-};
-exports.parseAIResponse = parseAIResponse;
 //# sourceMappingURL=review.js.map

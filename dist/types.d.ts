@@ -4,6 +4,11 @@ export interface User {
 }
 export interface PullRequest {
     number: number;
+    title?: string;
+    body?: string;
+    html_url?: string;
+    additions?: number;
+    deletions?: number;
     head: {
         sha: string;
         ref: string;

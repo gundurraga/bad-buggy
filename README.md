@@ -1,4 +1,4 @@
-# 🐰 Bad Buggy
+# 🐰⚡ Bad Buggy
 
 A simple, cost-effective GitHub Action that uses AI to review and comment your pull requests. Get instant feedback with transparent cost tracking.
 

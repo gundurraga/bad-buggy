@@ -628,93 +628,130 @@ const github_api_1 = __nccwpck_require__(568);
 // Pure function to get action inputs
 const getActionInputs = () => {
     return {
-        githubToken: core.getInput('github-token', { required: true }),
-        aiProvider: core.getInput('ai-provider', { required: true }),
-        apiKey: core.getInput('api-key', { required: true }),
-        model: core.getInput('model', { required: true }),
-        configFile: core.getInput('config-file') || '.github/ai-review-config.yml'
+        githubToken: core.getInput("github-token", { required: true }),
+        aiProvider: core.getInput("ai-provider", { required: true }),
+        apiKey: core.getInput("api-key", { required: true }),
+        model: core.getInput("model", { required: true }),
+        configFile: core.getInput("config-file") || ".github/ai-review-config.yml",
     };
 };
 // Effect: Review a single chunk
 const reviewChunk = async (chunk, config, provider, apiKey, model) => {
     const prompt = `${config.review_prompt}\n\nCode to review:\n${chunk.content}`;
+    core.info(`🔗 Calling AI provider: ${provider} with model: ${model}`);
+    core.info(`📝 Prompt length: ${prompt.length} characters`);
     const response = await (0, ai_api_1.callAIProvider)(provider, prompt, apiKey, model);
+    core.info(`🤖 AI Response received: ${response.content.length} characters`);
+    core.info(`📊 AI Response preview: "${response.content.substring(0, 200)}${response.content.length > 200 ? "..." : ""}"`);
     const comments = (0, review_1.parseAIResponse)(response.content);
-    const tokens = response.usage ? {
-        input: response.usage.input_tokens,
-        output: response.usage.output_tokens
-    } : {
-        input: (0, review_1.countTokens)(prompt, model),
-        output: (0, review_1.countTokens)(response.content, model)
-    };
+    core.info(`💬 Parsed ${comments.length} comments from AI response`);
+    const tokens = response.usage
+        ? {
+            input: response.usage.input_tokens,
+            output: response.usage.output_tokens,
+        }
+        : {
+            input: (0, review_1.countTokens)(prompt, model),
+            output: (0, review_1.countTokens)(response.content, model),
+        };
     return { comments, tokens };
 };
 // Main execution function
 const run = async () => {
     try {
+        core.info("🚀 Starting AI Code Review Action");
         // Get and validate inputs
+        core.info("📋 Getting action inputs...");
         const inputs = getActionInputs();
+        core.info(`✅ Inputs loaded: provider=${inputs.aiProvider}, model=${inputs.model}, config=${inputs.configFile}`);
         const inputValidation = (0, validation_1.validateInputs)(inputs);
-        (0, validation_1.validateAndThrow)(inputValidation, 'Input validation failed');
+        (0, validation_1.validateAndThrow)(inputValidation, "Input validation failed");
+        core.info("✅ Input validation passed");
         // Load and validate configuration
+        core.info(`📄 Loading configuration from ${inputs.configFile}...`);
         const config = await (0, config_1.loadConfig)(inputs.configFile);
+        core.info(`✅ Configuration loaded: max_comments=${config.max_comments}, prioritize_by_severity=${config.prioritize_by_severity}`);
         const configValidation = (0, validation_1.validateConfig)(config);
-        (0, validation_1.validateAndThrow)(configValidation, 'Configuration validation failed');
+        (0, validation_1.validateAndThrow)(configValidation, "Configuration validation failed");
+        core.info("✅ Configuration validation passed");
         // Initialize GitHub client
+        core.info("🔧 Initializing GitHub client...");
         const octokit = github.getOctokit(inputs.githubToken);
         const context = github.context;
         const pr = context.payload.pull_request;
         const triggeringUser = context.payload.sender;
         const repoOwner = context.repo.owner;
+        core.info(`📊 GitHub context: repo=${context.repo.owner}/${context.repo.repo}, event=${context.eventName}`);
         if (!pr || !triggeringUser) {
-            core.setFailed('This action can only be run on pull requests with a valid sender');
+            core.setFailed("This action can only be run on pull requests with a valid sender");
             return;
         }
+        core.info(`📝 PR #${pr.number}: "${pr.title}" by ${triggeringUser.login}`);
         // Type assertion for GitHub context
         const typedPr = pr;
         const typedContext = context;
         // Security check
+        core.info("🔒 Performing security checks...");
         const diff = await (0, github_api_1.getPRDiff)(octokit, typedContext, typedPr);
-        const modifiedFiles = diff.map(file => file.filename);
+        const modifiedFiles = diff.map((file) => file.filename);
+        core.info(`📁 Modified files (${modifiedFiles.length}): ${modifiedFiles.join(", ")}`);
         const securityCheck = (0, security_1.validateSecurity)(typedPr, triggeringUser, repoOwner, config, modifiedFiles);
         if (!securityCheck.allowed) {
-            core.setFailed(securityCheck.message || 'Security check failed');
+            core.setFailed(securityCheck.message || "Security check failed");
             return;
         }
+        core.info("✅ Security checks passed");
         // Check user permissions
+        core.info(`👤 Checking permissions for user: ${triggeringUser.login}`);
         const userPermission = await (0, github_api_1.checkUserPermissions)(octokit, repoOwner, context.repo.repo, triggeringUser.login);
-        if (!['admin', 'write'].includes(userPermission) && triggeringUser.login !== repoOwner) {
-            core.setFailed('User does not have sufficient permissions to trigger AI reviews');
+        core.info(`🔑 User permission level: ${userPermission}`);
+        if (!["admin", "write"].includes(userPermission) &&
+            triggeringUser.login !== repoOwner) {
+            core.setFailed("User does not have sufficient permissions to trigger AI reviews");
             return;
         }
+        core.info("✅ User permissions verified");
         // Process diff
+        core.info("📊 Processing diff and creating chunks...");
         const chunks = (0, review_1.chunkDiff)(diff, config);
+        core.info(`📦 Created ${chunks.length} chunks for review`);
         if (chunks.length === 0) {
-            core.info('No files to review after applying ignore patterns');
+            core.info("⚠️ No files to review after applying ignore patterns");
             return;
         }
         // Review chunks and accumulate results
+        core.info("🤖 Starting AI review process...");
         let allComments = [];
         let totalTokens = { input: 0, output: 0 };
-        for (const chunk of chunks) {
+        for (let i = 0; i < chunks.length; i++) {
+            const chunk = chunks[i];
+            core.info(`🔍 Reviewing chunk ${i + 1}/${chunks.length} (${chunk.content.length} chars)`);
             const { comments, tokens } = await reviewChunk(chunk, config, inputs.aiProvider, inputs.apiKey, inputs.model);
+            core.info(`📝 Chunk ${i + 1} results: ${comments.length} comments, ${tokens.input} input tokens, ${tokens.output} output tokens`);
             allComments = allComments.concat(comments);
             totalTokens = (0, cost_1.accumulateTokens)(totalTokens, tokens);
         }
+        core.info(`📊 Total review results: ${allComments.length} raw comments, ${totalTokens.input} input tokens, ${totalTokens.output} output tokens`);
         // Process and post comments
+        core.info("🔄 Processing and filtering comments...");
         const finalComments = (0, review_1.processComments)(allComments, config);
+        core.info(`✨ Final comments after processing: ${finalComments.length} (filtered from ${allComments.length})`);
         const reviewBody = (0, github_1.formatReviewBody)(inputs.model, totalTokens, finalComments.length);
         if (finalComments.length > 0) {
+            core.info("📤 Posting review to GitHub...");
             await (0, github_api_1.postReview)(octokit, typedContext, typedPr, finalComments, reviewBody);
-            core.info(`Posted ${finalComments.length} review comments`);
+            core.info(`✅ Posted ${finalComments.length} review comments`);
         }
         else {
-            core.info('No issues found in the code');
+            core.info("ℹ️ No issues found in the code - posting summary comment");
+            // Post a summary even when no issues found
+            await (0, github_api_1.postReview)(octokit, typedContext, typedPr, [], reviewBody);
         }
         // Report cost
         const cost = (0, cost_1.calculateCost)(inputs.model, totalTokens);
-        const costMessage = `AI Review Cost: ${(0, cost_1.formatCost)(cost.totalCost)} (${(0, cost_1.formatCost)(cost.inputCost)} input + ${(0, cost_1.formatCost)(cost.outputCost)} output)`;
+        const costMessage = `💰 AI Review Cost: ${(0, cost_1.formatCost)(cost.totalCost)} (${(0, cost_1.formatCost)(cost.inputCost)} input + ${(0, cost_1.formatCost)(cost.outputCost)} output)`;
         core.info(costMessage);
+        core.info("🎉 AI Code Review completed successfully!");
     }
     catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);

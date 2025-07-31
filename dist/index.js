@@ -1,6 +1,1400 @@
 require('./sourcemap-register.js');/******/ (() => { // webpackBootstrap
 /******/ 	var __webpack_modules__ = ({
 
+/***/ 1677:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.loadConfig = exports.mergeConfig = exports.DEFAULT_CONFIG = void 0;
+const file_system_1 = __nccwpck_require__(1162);
+const default_config_1 = __nccwpck_require__(5853);
+Object.defineProperty(exports, "DEFAULT_CONFIG", ({ enumerable: true, get: function () { return default_config_1.DEFAULT_CONFIG; } }));
+// Pure function to merge configurations
+const mergeConfig = (defaultConfig, userConfig) => {
+    return {
+        ...defaultConfig,
+        ...userConfig
+    };
+};
+exports.mergeConfig = mergeConfig;
+// Effect: Load and merge configuration
+const loadConfig = async (configFile) => {
+    const userConfig = await (0, file_system_1.loadConfigFromFile)(configFile);
+    return userConfig ? (0, exports.mergeConfig)(default_config_1.DEFAULT_CONFIG, userConfig) : default_config_1.DEFAULT_CONFIG;
+};
+exports.loadConfig = loadConfig;
+//# sourceMappingURL=config.js.map
+
+/***/ }),
+
+/***/ 5853:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.DEFAULT_CONFIG = void 0;
+// Default configuration for Bad Buggy code review
+exports.DEFAULT_CONFIG = {
+    review_prompt: `CONTEXT: Today is {{DATE}}. Review with current best practices in mind.
+
+MANDATORY FIRST STEP - IDENTIFY MOST CRITICAL ISSUE:
+Priority 1: Functional failures (broken core functionality, data corruption risks, critical security vulnerabilities, memory leaks)
+Priority 2: System stability (poor error handling, race conditions, performance bottlenecks)  
+Priority 3: Maintainability blockers (architectural violations, tight coupling, code duplication)
+
+Output format: "MOST CRITICAL ISSUE: [Category] - [Description]. IMPACT: [What breaks if unfixed]. IMMEDIATE ACTION: [Specific fix needed]."
+
+EVALUATION FRAMEWORK:
+- Functional Correctness: Requirements met, edge cases handled, input validation, boundary conditions
+- Technical Implementation: Algorithm efficiency, architecture decisions, technology usage appropriately
+- Code Quality: Readability (clear naming, formatting), documentation (explains why not just what), comprehensive error handling
+- Testing & Reliability: Unit/integration tests, edge case coverage, proper mocking
+- Security & Safety: Input sanitization, authentication checks, no hardcoded secrets
+
+ANTIPATTERN DETECTION - Flag and educate on:
+- God objects/functions (200+ line functions doing everything)
+- Magic numbers/strings (use constants with descriptive names)
+- Poor error handling (silent failures, swallowing exceptions)
+- Tight coupling (changes requiring modifications across unrelated modules)
+- Code duplication (repeated logic that should be abstracted)
+
+COMMENT STRATEGY: Only add comments for genuinely critical issues that will impact functionality, security, or long-term maintainability. Skip minor style preferences unless they create real problems.`,
+    max_comments: 5,
+    prioritize_by_severity: true,
+    review_aspects: [
+        'bugs',
+        'security_vulnerabilities',
+        'performance_issues',
+        'code_quality',
+        'best_practices',
+        'architecture_suggestions',
+        'code_organization',
+        'code_readability',
+        'code_maintainability',
+    ],
+    ignore_patterns: [],
+    allowed_users: [], // Empty array means allow all users
+};
+//# sourceMappingURL=default-config.js.map
+
+/***/ }),
+
+/***/ 4952:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.formatCost = exports.accumulateTokens = exports.calculateCost = exports.getModelPricing = void 0;
+// Model pricing configuration (per 1M tokens)
+const MODEL_PRICING = {
+    'claude-4': { input: 3.0, output: 15.0 },
+    'claude-4-opus': { input: 15.0, output: 75.0 },
+};
+// Pure function to get model pricing
+const getModelPricing = (model) => {
+    return MODEL_PRICING[model] || MODEL_PRICING['claude-4'];
+};
+exports.getModelPricing = getModelPricing;
+// Pure function to calculate cost
+const calculateCost = (model, tokens) => {
+    const pricing = (0, exports.getModelPricing)(model);
+    const inputCost = (tokens.input / 1000000) * pricing.input;
+    const outputCost = (tokens.output / 1000000) * pricing.output;
+    const totalCost = inputCost + outputCost;
+    return { inputCost, outputCost, totalCost, pricing };
+};
+exports.calculateCost = calculateCost;
+// Pure function to accumulate token usage
+const accumulateTokens = (existing, additional) => {
+    return {
+        input: existing.input + additional.input,
+        output: existing.output + additional.output
+    };
+};
+exports.accumulateTokens = accumulateTokens;
+// Pure function to format cost for display
+const formatCost = (cost) => {
+    return `$${cost.toFixed(4)}`;
+};
+exports.formatCost = formatCost;
+//# sourceMappingURL=cost.js.map
+
+/***/ }),
+
+/***/ 8790:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.createReviewComment = exports.formatReviewBody = exports.extractPRInfo = void 0;
+// Pure function to extract PR info
+const extractPRInfo = (pr) => {
+    return {
+        number: pr.number,
+        headSha: pr.head.sha,
+        baseSha: pr.base.sha,
+        headRef: pr.head.ref,
+        baseRef: pr.base.ref,
+        author: pr.user.login
+    };
+};
+exports.extractPRInfo = extractPRInfo;
+// Pure function to format review body with PR summary
+const formatReviewBody = (model, totalTokens, commentCount, prInfo) => {
+    let summary = `## 🐰⚡ Bad Buggy\n\n`;
+    // Add PR summary if provided
+    if (prInfo) {
+        summary += `### 📋 Pull Request Summary\n\n`;
+        summary += `**Title:** ${prInfo.title}\n`;
+        summary += `**Author:** @${prInfo.author}\n`;
+        summary += `**Files Changed:** ${prInfo.filesChanged.length} files\n`;
+        summary += `**Changes:** +${prInfo.additions} -${prInfo.deletions}\n`;
+        if (prInfo.description && prInfo.description.trim()) {
+            summary += `**Description:** ${prInfo.description.trim()}\n`;
+        }
+        summary += `\n**Modified Files:**\n`;
+        prInfo.filesChanged.slice(0, 10).forEach(file => {
+            summary += `- \`${file}\`\n`;
+        });
+        if (prInfo.filesChanged.length > 10) {
+            summary += `- ... and ${prInfo.filesChanged.length - 10} more files\n`;
+        }
+        summary += `\n---\n\n`;
+    }
+    // Add review details
+    const modelInfo = `**Model:** ${model}`;
+    const tokenInfo = `**Tokens used:** ${totalTokens.input + totalTokens.output} (${totalTokens.input} input + ${totalTokens.output} output)`;
+    const commentInfo = `**Comments:** ${commentCount}`;
+    summary += `### 🔍 Review Details\n\n${modelInfo}\n${tokenInfo}\n${commentInfo}\n\n---\n\n*This review was generated by Bad Buggy code reviewer.*`;
+    return summary;
+};
+exports.formatReviewBody = formatReviewBody;
+// Pure function to create review comment
+const createReviewComment = (path, line, body) => {
+    return {
+        path,
+        line,
+        body
+    };
+};
+exports.createReviewComment = createReviewComment;
+//# sourceMappingURL=github.js.map
+
+/***/ }),
+
+/***/ 7650:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.processComments = exports.chunkDiff = exports.shouldIgnoreFile = exports.countTokens = void 0;
+// Pure function to count tokens
+const countTokens = (text, model) => {
+    let avgCharsPerToken = 3.5; // Default conservative estimate
+    // Adjust based on model type (rough estimates)
+    if (model.includes("claude")) {
+        avgCharsPerToken = 3.8; // Claude tends to have slightly longer tokens
+    }
+    else if (model.includes("gpt-4")) {
+        avgCharsPerToken = 3.2; // GPT-4 is more efficient
+    }
+    else if (model.includes("gpt-3")) {
+        avgCharsPerToken = 3.0; // GPT-3 models
+    }
+    return Math.ceil(text.length / avgCharsPerToken);
+};
+exports.countTokens = countTokens;
+// Pure function to check if file should be ignored
+const shouldIgnoreFile = (filename, config) => {
+    return config.ignore_patterns.some((pattern) => {
+        if (pattern.includes("*")) {
+            const regex = new RegExp(pattern.replace(/\*/g, ".*"));
+            return regex.test(filename);
+        }
+        return filename.includes(pattern);
+    });
+};
+exports.shouldIgnoreFile = shouldIgnoreFile;
+// Pure function to chunk diff content
+const chunkDiff = (diff, config) => {
+    const chunks = [];
+    let currentChunk = { content: "", files: [], size: 0 };
+    const maxChunkSize = 60000;
+    // Filter out ignored files first
+    const validFiles = diff.filter(file => !(0, exports.shouldIgnoreFile)(file.filename, config));
+    // Pre-calculate file content and sizes for better optimization
+    const fileData = validFiles.map(file => {
+        const content = `\n--- ${file.filename} (${file.status})\n${file.patch || ""}\n`;
+        return {
+            file,
+            content,
+            size: content.length
+        };
+    });
+    // Sort files by size (smallest first) to optimize packing
+    fileData.sort((a, b) => a.size - b.size);
+    for (const { file, content, size } of fileData) {
+        // If this is the first file or adding it won't exceed the limit, add to current chunk
+        if (currentChunk.size === 0 || currentChunk.size + size <= maxChunkSize) {
+            currentChunk.content += content;
+            currentChunk.files.push(file.filename);
+            currentChunk.size += size;
+        }
+        else {
+            // Current chunk is full, start a new one
+            if (currentChunk.content) {
+                chunks.push(currentChunk);
+            }
+            currentChunk = {
+                content: content,
+                files: [file.filename],
+                size: size
+            };
+        }
+    }
+    // Add the last chunk if it has content
+    if (currentChunk.content) {
+        chunks.push(currentChunk);
+    }
+    return chunks;
+};
+exports.chunkDiff = chunkDiff;
+// Pure function to process and sort comments
+const processComments = (comments, config) => {
+    // Parse and sort comments
+    const sortedComments = [...comments];
+    if (config.prioritize_by_severity) {
+        const severityOrder = { critical: 0, major: 1, suggestion: 2 };
+        sortedComments.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+    }
+    // Limit to max_comments
+    return sortedComments.slice(0, config.max_comments);
+};
+exports.processComments = processComments;
+//# sourceMappingURL=review.js.map
+
+/***/ }),
+
+/***/ 1022:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.validateSecurity = exports.hasWorkflowChanges = exports.isExternalFork = exports.isUserAllowed = exports.isRepositoryOwner = void 0;
+// Pure function to check if user is repository owner
+const isRepositoryOwner = (user, repoOwner) => {
+    return user.login === repoOwner;
+};
+exports.isRepositoryOwner = isRepositoryOwner;
+// Pure function to check if user is in allowed list
+const isUserAllowed = (user, allowedUsers) => {
+    return allowedUsers.length === 0 || allowedUsers.includes(user.login);
+};
+exports.isUserAllowed = isUserAllowed;
+// Pure function to check if PR is from external fork
+const isExternalFork = (pr, _repoOwner) => {
+    return pr.head.repo.full_name !== pr.base.repo.full_name;
+};
+exports.isExternalFork = isExternalFork;
+// Pure function to check if workflow files are modified
+const hasWorkflowChanges = (files) => {
+    return files.some(file => file.startsWith('.github/workflows/'));
+};
+exports.hasWorkflowChanges = hasWorkflowChanges;
+// Pure function to perform security validation
+const validateSecurity = (pr, triggeringUser, repoOwner, config, modifiedFiles = []) => {
+    const isOwner = (0, exports.isRepositoryOwner)(triggeringUser, repoOwner);
+    const isExternal = (0, exports.isExternalFork)(pr, repoOwner);
+    const hasWorkflow = (0, exports.hasWorkflowChanges)(modifiedFiles);
+    const userAllowed = (0, exports.isUserAllowed)(triggeringUser, config.allowed_users);
+    // External fork PRs can only be reviewed by repository owner
+    if (isExternal && !isOwner) {
+        return {
+            allowed: false,
+            reason: 'external_fork_restriction',
+            message: 'AI reviews for external fork PRs can only be triggered by the repository owner for security reasons.'
+        };
+    }
+    // Check explicit allowlist
+    if (!userAllowed) {
+        return {
+            allowed: false,
+            reason: 'user_not_allowed',
+            message: `User ${triggeringUser.login} is not in the allowed users list.`
+        };
+    }
+    // Workflow file changes require owner permission
+    if (hasWorkflow && !isOwner) {
+        return {
+            allowed: false,
+            reason: 'workflow_modification_restriction',
+            message: 'AI reviews for PRs modifying workflow files can only be triggered by the repository owner.'
+        };
+    }
+    return { allowed: true };
+};
+exports.validateSecurity = validateSecurity;
+//# sourceMappingURL=security.js.map
+
+/***/ }),
+
+/***/ 1884:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.callAIProvider = exports.callOpenRouter = exports.callAnthropic = void 0;
+const types_1 = __nccwpck_require__(6118);
+// Effect: Call Anthropic API
+const callAnthropic = async (prompt, apiKey, model) => {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            "x-api-key": apiKey,
+            "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+            model,
+            max_tokens: 4000,
+            messages: [{ role: "user", content: prompt }],
+        }),
+    });
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new types_1.AIProviderError(`Anthropic API error: ${errorText}`, response.status);
+    }
+    const data = await response.json();
+    return {
+        content: data.content[0].text,
+        usage: {
+            input_tokens: data.usage.input_tokens,
+            output_tokens: data.usage.output_tokens,
+        },
+    };
+};
+exports.callAnthropic = callAnthropic;
+// Effect: Call OpenRouter API
+const callOpenRouter = async (prompt, apiKey, model) => {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+            "HTTP-Referer": "https://github.com/gundurraga/bad-buggy",
+            "X-Title": "Bad Buggy Code Reviewer",
+        },
+        body: JSON.stringify({
+            model,
+            messages: [{ role: "user", content: prompt }],
+            max_tokens: 4000,
+        }),
+    });
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new types_1.AIProviderError(`OpenRouter API error: ${response.status} - ${errorText}`);
+    }
+    const data = (await response.json());
+    return {
+        content: data.choices[0].message.content,
+        usage: {
+            input_tokens: data.usage.prompt_tokens,
+            output_tokens: data.usage.completion_tokens,
+        },
+    };
+};
+exports.callOpenRouter = callOpenRouter;
+// Effect: Route to appropriate AI provider
+const callAIProvider = async (provider, prompt, apiKey, model) => {
+    try {
+        switch (provider) {
+            case "anthropic":
+                return await (0, exports.callAnthropic)(prompt, apiKey, model);
+            case "openrouter":
+                return await (0, exports.callOpenRouter)(prompt, apiKey, model);
+            default:
+                throw new types_1.AIProviderError(`Unsupported AI provider: ${provider}`);
+        }
+    }
+    catch (error) {
+        if (error instanceof types_1.AIProviderError) {
+            throw error;
+        }
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        throw new types_1.AIProviderError(`AI provider call failed: ${errorMessage}`);
+    }
+};
+exports.callAIProvider = callAIProvider;
+//# sourceMappingURL=ai-api.js.map
+
+/***/ }),
+
+/***/ 1162:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.loadConfigFromFile = void 0;
+const fs = __importStar(__nccwpck_require__(7147));
+const yaml = __importStar(__nccwpck_require__(1917));
+// Effect: Load configuration from file
+const loadConfigFromFile = async (configFile) => {
+    try {
+        if (!fs.existsSync(configFile)) {
+            return null;
+        }
+        const configContent = fs.readFileSync(configFile, 'utf8');
+        return yaml.load(configContent);
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`Failed to load config file: ${message}`);
+    }
+};
+exports.loadConfigFromFile = loadConfigFromFile;
+//# sourceMappingURL=file-system.js.map
+
+/***/ }),
+
+/***/ 568:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.postReview = exports.checkUserPermissions = exports.getPRDiff = void 0;
+const logger_1 = __nccwpck_require__(9741);
+// Effect: Get PR diff from GitHub API
+const getPRDiff = async (octokit, context, pr) => {
+    const { data: files } = await octokit.rest.pulls.listFiles({
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+        pull_number: pr.number,
+        per_page: 100
+    });
+    return files.map(file => ({
+        filename: file.filename,
+        status: file.status,
+        patch: file.patch
+    }));
+};
+exports.getPRDiff = getPRDiff;
+// Effect: Check user permissions
+const checkUserPermissions = async (octokit, owner, repo, username) => {
+    try {
+        const { data } = await octokit.rest.repos.getCollaboratorPermissionLevel({
+            owner,
+            repo,
+            username
+        });
+        return data.permission;
+    }
+    catch (error) {
+        return 'none';
+    }
+};
+exports.checkUserPermissions = checkUserPermissions;
+// Effect: Post review to GitHub
+// Helper function to extract valid line numbers from patch
+const getValidLinesFromPatch = (patch) => {
+    const validLines = new Set();
+    if (!patch)
+        return validLines;
+    const lines = patch.split('\n');
+    let currentLine = 0;
+    for (const line of lines) {
+        // Parse hunk headers like @@ -1,4 +1,6 @@
+        const hunkMatch = line.match(/^@@ -\d+,?\d* \+(\d+),?\d* @@/);
+        if (hunkMatch) {
+            currentLine = parseInt(hunkMatch[1], 10);
+            continue;
+        }
+        // Skip context lines (start with space) and deleted lines (start with -)
+        if (line.startsWith(' ') || line.startsWith('+')) {
+            if (currentLine > 0) {
+                validLines.add(currentLine);
+            }
+        }
+        // Increment line number for context and added lines
+        if (line.startsWith(' ') || line.startsWith('+')) {
+            currentLine++;
+        }
+    }
+    return validLines;
+};
+// Helper function to validate comments against diff
+const validateCommentsAgainstDiff = (comments, fileChanges) => {
+    const fileValidLines = new Map();
+    // Build map of valid lines for each file
+    for (const file of fileChanges) {
+        if (file.patch) {
+            fileValidLines.set(file.filename, getValidLinesFromPatch(file.patch));
+        }
+    }
+    // Filter comments to only include those on valid lines
+    return comments.filter(comment => {
+        const validLines = fileValidLines.get(comment.path);
+        if (!validLines || validLines.size === 0) {
+            return false; // No valid lines for this file
+        }
+        return validLines.has(comment.line);
+    });
+};
+const postReview = async (octokit, context, pr, comments, body, fileChanges) => {
+    let validatedComments = comments;
+    // Validate comments against diff if file changes are provided
+    if (fileChanges) {
+        validatedComments = validateCommentsAgainstDiff(comments, fileChanges);
+        if (validatedComments.length < comments.length) {
+            const filteredCount = comments.length - validatedComments.length;
+            const filteredComments = comments.filter(c => !validatedComments.includes(c));
+            logger_1.Logger.commentFiltering(filteredCount, filteredComments.map(c => `${c.path}:${c.line}`));
+        }
+    }
+    const reviewComments = validatedComments.map(comment => ({
+        path: comment.path,
+        line: comment.line,
+        body: comment.body
+    }));
+    await octokit.rest.pulls.createReview({
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+        pull_number: pr.number,
+        body: body,
+        event: 'COMMENT',
+        comments: reviewComments
+    });
+};
+exports.postReview = postReview;
+//# sourceMappingURL=github-api.js.map
+
+/***/ }),
+
+/***/ 9496:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.run = void 0;
+const core = __importStar(__nccwpck_require__(2186));
+const github = __importStar(__nccwpck_require__(5438));
+const config_1 = __nccwpck_require__(1677);
+const workflow_1 = __nccwpck_require__(7336);
+const logger_1 = __nccwpck_require__(9741);
+// Pure function to get action inputs
+const getActionInputs = () => {
+    return {
+        githubToken: core.getInput("github-token", { required: true }),
+        aiProvider: core.getInput("ai-provider", { required: true }),
+        apiKey: core.getInput("api-key", { required: true }),
+        model: core.getInput("model", { required: true }),
+        configFile: core.getInput("config-file") || ".github/ai-review-config.yml",
+    };
+};
+// Main execution function
+const run = async () => {
+    try {
+        logger_1.Logger.startup();
+        // Get and validate inputs
+        const inputs = getActionInputs();
+        logger_1.Logger.inputs(inputs.aiProvider, inputs.model, inputs.configFile);
+        // Load and validate configuration
+        logger_1.Logger.configLoading(inputs.configFile);
+        const config = await (0, config_1.loadConfig)(inputs.configFile);
+        logger_1.Logger.configLoaded(config.max_comments, config.prioritize_by_severity);
+        // Initialize GitHub client and context
+        const octokit = github.getOctokit(inputs.githubToken);
+        const context = github.context;
+        logger_1.Logger.githubInit(context.repo.owner, context.repo.repo, context.eventName);
+        // Create workflow orchestrator
+        const workflow = new workflow_1.ReviewWorkflow(octokit, context, inputs, config);
+        // Execute workflow steps
+        await workflow.validateInputs();
+        await workflow.validateConfig();
+        const { pr, triggeringUser, repoOwner } = await workflow.validatePullRequest();
+        const modifiedFiles = await workflow.performSecurityChecks(pr, triggeringUser, repoOwner);
+        await workflow.checkUserPermissions(triggeringUser, repoOwner);
+        const { comments, tokens, fileChanges } = await workflow.processAndReviewDiff();
+        if (comments.length === 0 && tokens.input === 0) {
+            return; // No files to review
+        }
+        await workflow.processAndPostComments(comments, tokens, modifiedFiles, pr, triggeringUser, fileChanges);
+        await workflow.reportCosts(tokens);
+        logger_1.Logger.completion();
+    }
+    catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        // Classify error types for better debugging
+        if (error instanceof Error) {
+            if (error.message.includes('validation')) {
+                core.setFailed(`Configuration Error: ${errorMessage}`);
+                process.exit(1);
+            }
+            else if (error.message.includes('permission')) {
+                core.setFailed(`Permission Error: ${errorMessage}`);
+                process.exit(2);
+            }
+            else if (error.message.includes('API')) {
+                core.setFailed(`API Error: ${errorMessage}`);
+                process.exit(3);
+            }
+            else {
+                core.setFailed(`Unexpected Error: ${errorMessage}`);
+                process.exit(4);
+            }
+        }
+        else {
+            core.setFailed(`Unknown Error: ${errorMessage}`);
+            process.exit(5);
+        }
+        logger_1.Logger.error(errorMessage);
+    }
+};
+exports.run = run;
+// Execute if this is the main module
+if (require.main === require.cache[eval('__filename')]) {
+    (0, exports.run)().catch((error) => {
+        console.error('Fatal error during execution:', error);
+        process.exit(6);
+    });
+}
+//# sourceMappingURL=main.js.map
+
+/***/ }),
+
+/***/ 1821:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.reviewChunk = exports.parseAIResponse = exports.buildReviewPrompt = void 0;
+const core = __importStar(__nccwpck_require__(2186));
+const ai_api_1 = __nccwpck_require__(1884);
+const review_1 = __nccwpck_require__(7650);
+/**
+ * Service for handling Bad Buggy-powered code review operations
+ */
+// Pure function to build review prompt
+const buildReviewPrompt = (config, chunkContent) => {
+    const basePrompt = config.review_prompt.replace('{{DATE}}', new Date().toISOString().split('T')[0]);
+    return `${basePrompt}
+
+Please review the following code changes and provide feedback as a JSON array of comments.
+Each comment should have:
+- file: the filename
+- line: the line number (from the diff)
+- end_line: (optional) the end line for multi-line comments
+- severity: "critical", "major", or "suggestion"
+- category: one of ${config.review_aspects.join(', ')}
+- comment: your feedback
+
+Examples of correct JSON responses:
+
+[
+  {
+    "file": "src/auth.js",
+    "line": 45,
+    "severity": "critical",
+    "category": "security_vulnerabilities",
+    "comment": "CRITICAL: SQL injection vulnerability. User input 'userInput' is directly concatenated into query without sanitization. IMPACT: Database compromise, data theft. IMMEDIATE ACTION: Use parameterized queries or ORM methods."
+  },
+  {
+    "file": "src/payment.js", 
+    "line": 78,
+    "end_line": 85,
+    "severity": "major", 
+    "category": "bugs",
+    "comment": "Race condition in payment processing. Multiple concurrent transactions can cause double-charging. IMPACT: Financial loss, customer complaints. IMMEDIATE ACTION: Add transaction locking or atomic operations."
+  }
+]
+
+Code changes:
+${chunkContent}
+
+Respond with ONLY a JSON array, no other text. Do not include explanations, thinking, or any text outside the JSON array. Start your response with [ and end with ].`;
+};
+exports.buildReviewPrompt = buildReviewPrompt;
+// Helper function to validate severity
+const isValidSeverity = (severity) => {
+    return ['critical', 'major', 'suggestion'].includes(severity);
+};
+// Pure function to parse AI response into ReviewComments
+const parseAIResponse = (responseContent) => {
+    let comments = [];
+    try {
+        // Try to parse the full response first
+        const parsedResponse = JSON.parse(responseContent);
+        comments = parsedResponse.map((comment) => {
+            if (!isValidSeverity(comment.severity)) {
+                core.warning(`Invalid severity '${comment.severity}' found, defaulting to 'suggestion'`);
+                comment.severity = 'suggestion';
+            }
+            return {
+                path: comment.file,
+                line: comment.line,
+                end_line: comment.end_line,
+                severity: comment.severity,
+                body: comment.comment
+            };
+        });
+    }
+    catch (e) {
+        // If that fails, try to extract JSON from the response
+        try {
+            const jsonMatch = responseContent.match(/\[[\s\S]*\]/);
+            if (jsonMatch) {
+                const parsedResponse = JSON.parse(jsonMatch[0]);
+                comments = parsedResponse.map((comment) => {
+                    if (!isValidSeverity(comment.severity)) {
+                        core.warning(`Invalid severity '${comment.severity}' found, defaulting to 'suggestion'`);
+                        comment.severity = 'suggestion';
+                    }
+                    return {
+                        path: comment.file,
+                        line: comment.line,
+                        end_line: comment.end_line,
+                        severity: comment.severity,
+                        body: comment.comment
+                    };
+                });
+            }
+            else {
+                core.warning('Failed to parse AI response as JSON - no JSON array found');
+                core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
+                comments = [];
+            }
+        }
+        catch (e2) {
+            core.warning('Failed to parse AI response as JSON');
+            core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
+            comments = [];
+        }
+    }
+    return comments;
+};
+exports.parseAIResponse = parseAIResponse;
+// Effect: Review a single chunk
+const reviewChunk = async (chunk, config, provider, apiKey, model) => {
+    const prompt = (0, exports.buildReviewPrompt)(config, chunk.content);
+    core.info(`🔗 Calling AI provider: ${provider} with model: ${model}`);
+    core.info(`📝 Prompt length: ${prompt.length} characters`);
+    const response = await (0, ai_api_1.callAIProvider)(provider, prompt, apiKey, model);
+    core.info(`🤖 AI Response received: ${response.content.length} characters`);
+    core.info(`📊 AI Response preview: "${response.content.substring(0, 200)}${response.content.length > 200 ? '...' : ''}"`);
+    const comments = (0, exports.parseAIResponse)(response.content);
+    core.info(`💬 Parsed ${comments.length} comments from AI response`);
+    const tokens = response.usage
+        ? {
+            input: response.usage.input_tokens,
+            output: response.usage.output_tokens,
+        }
+        : {
+            input: (0, review_1.countTokens)(prompt, model),
+            output: (0, review_1.countTokens)(response.content, model),
+        };
+    return { comments, tokens };
+};
+exports.reviewChunk = reviewChunk;
+//# sourceMappingURL=ai-review.js.map
+
+/***/ }),
+
+/***/ 9741:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.Logger = void 0;
+const core = __importStar(__nccwpck_require__(2186));
+const cost_1 = __nccwpck_require__(4952);
+/**
+ * Centralized logging service for consistent and organized output
+ */
+class Logger {
+    static startup() {
+        core.info('🚀 Starting Bad Buggy Action');
+    }
+    static inputs(provider, model, configFile) {
+        core.info('📋 Getting action inputs...');
+        core.info(`✅ Inputs loaded: provider=${provider}, model=${model}, config=${configFile}`);
+    }
+    static inputValidation() {
+        core.info('✅ Input validation passed');
+    }
+    static configLoading(configFile) {
+        core.info(`📄 Loading configuration from ${configFile}...`);
+    }
+    static configLoaded(maxComments, prioritizeBySeverity) {
+        core.info(`✅ Configuration loaded: max_comments=${maxComments}, prioritize_by_severity=${prioritizeBySeverity}`);
+    }
+    static configValidation() {
+        core.info('✅ Configuration validation passed');
+    }
+    static githubInit(owner, repo, eventName) {
+        core.info('🔧 Initializing GitHub client...');
+        core.info(`📊 GitHub context: repo=${owner}/${repo}, event=${eventName}`);
+    }
+    static prInfo(number, title, author, body, url, headRef, baseRef, additions, deletions, changedFiles) {
+        core.info(`📝 PR #${number}: "${title}" by ${author}`);
+        core.info(`📄 PR Description: ${body ? body.substring(0, 200) + (body.length > 200 ? '...' : '') : 'No description provided'}`);
+        core.info(`🔗 PR URL: ${url}`);
+        core.info(`🌿 Branch: ${headRef} → ${baseRef}`);
+        core.info(`📊 PR Stats: +${additions} -${deletions} changes in ${changedFiles} files`);
+    }
+    static securityCheck() {
+        core.info('🔒 Performing security checks...');
+    }
+    static modifiedFiles(files) {
+        core.info(`📁 Modified files (${files.length}): ${files.join(', ')}`);
+    }
+    static securityPassed() {
+        core.info('✅ Security checks passed');
+    }
+    static userPermissionCheck(username) {
+        core.info(`👤 Checking permissions for user: ${username}`);
+    }
+    static userPermissionLevel(level) {
+        core.info(`🔑 User permission level: ${level}`);
+    }
+    static userPermissionsPassed() {
+        core.info('✅ User permissions verified');
+    }
+    static diffProcessing() {
+        core.info('📊 Processing diff and creating chunks...');
+    }
+    static chunksCreated(count) {
+        core.info(`📦 Created ${count} chunks for review`);
+    }
+    static noFilesToReview() {
+        core.info('⚠️ No files to review after applying ignore patterns');
+    }
+    static reviewStart() {
+        core.info('🤖 Starting AI review process...');
+    }
+    static chunkReview(current, total, contentLength, files) {
+        core.info(`🔍 Reviewing chunk ${current}/${total} (${contentLength} chars)`);
+        core.info(`📁 Chunk ${current} files: ${files ? files.join(', ') : 'N/A'}`);
+    }
+    static aiProviderCall(current, provider, model) {
+        core.info(`🤖 Sending chunk ${current} to AI provider: ${provider}`);
+        core.info(`🎯 Using model: ${model}`);
+    }
+    static chunkResults(current, commentCount, inputTokens, outputTokens, duration) {
+        core.info(`📝 Chunk ${current} results: ${commentCount} comments, ${inputTokens} input tokens, ${outputTokens} output tokens (${duration}ms)`);
+    }
+    static chunkIssues(current, comments) {
+        if (comments.length > 0) {
+            core.info(`🔍 Chunk ${current} found issues:`);
+            comments.forEach((comment, idx) => {
+                core.info(`  ${idx + 1}. [${comment.severity}] ${comment.path}:${comment.line} - ${comment.body.substring(0, 100)}${comment.body.length > 100 ? '...' : ''}`);
+            });
+        }
+        else {
+            core.info(`✅ Chunk ${current}: No issues found`);
+        }
+    }
+    static totalResults(commentCount, inputTokens, outputTokens) {
+        core.info(`📊 Total review results: ${commentCount} raw comments, ${inputTokens} input tokens, ${outputTokens} output tokens`);
+    }
+    static commentProcessing() {
+        core.info('🔄 Processing and filtering comments...');
+    }
+    static severityBreakdown(severityCounts) {
+        core.info('📊 Raw comments by severity:');
+        Object.entries(severityCounts).forEach(([severity, count]) => {
+            core.info(`  ${severity}: ${count} comments`);
+        });
+    }
+    static finalComments(finalCount, originalCount) {
+        core.info(`✨ Final comments after processing: ${finalCount} (filtered from ${originalCount})`);
+    }
+    static filteringReasons(maxComments, prioritizeBySeverity) {
+        core.info('🔽 Comments filtered due to:');
+        core.info(`  - Max comments limit: ${maxComments}`);
+        core.info(`  - Severity prioritization: ${prioritizeBySeverity}`);
+    }
+    static postingReview(summaryLength, commentCount) {
+        core.info('📤 Posting review to GitHub...');
+        core.info(`📝 Review summary length: ${summaryLength} characters`);
+        core.info(`💬 Individual comments to post: ${commentCount}`);
+    }
+    static reviewPosted(commentCount, duration) {
+        core.info(`✅ Posted ${commentCount} review comments (${duration}ms)`);
+    }
+    static summaryOnly(summaryLength) {
+        core.info('ℹ️ No issues found in the code - posting summary comment');
+        core.info(`📝 Summary-only review length: ${summaryLength} characters`);
+    }
+    static summaryPosted(duration) {
+        core.info(`✅ Posted summary review (${duration}ms)`);
+    }
+    static costCalculation() {
+        core.info('💰 Calculating review costs...');
+    }
+    static costSummary(totalCost, inputCost, outputCost) {
+        const costMessage = `💰 AI Review Cost: ${(0, cost_1.formatCost)(totalCost)} (${(0, cost_1.formatCost)(inputCost)} input + ${(0, cost_1.formatCost)(outputCost)} output)`;
+        core.info(costMessage);
+    }
+    static costBreakdown(tokens, inputCost, outputCost, totalCost) {
+        core.info('📊 Token breakdown:');
+        core.info(`  Input tokens: ${tokens.input} (${(0, cost_1.formatCost)(inputCost)})`);
+        core.info(`  Output tokens: ${tokens.output} (${(0, cost_1.formatCost)(outputCost)})`);
+        core.info(`  Total tokens: ${tokens.input + tokens.output}`);
+        core.info(`💵 Cost per review: ${(0, cost_1.formatCost)(totalCost)}`);
+        if (totalCost > 0) {
+            const reviewsPerDollar = Math.floor(1 / totalCost);
+            core.info(`📈 Reviews per dollar: ~${reviewsPerDollar}`);
+        }
+    }
+    static completion() {
+        core.info('🎉 Bad Buggy completed successfully!');
+    }
+    static commentFiltering(filteredCount, filteredComments) {
+        core.info(`🔍 Filtered out ${filteredCount} comments that referenced invalid diff lines`);
+        if (filteredComments.length > 0) {
+            core.info(`   Filtered comments: ${filteredComments.join(', ')}`);
+        }
+    }
+    static error(message) {
+        core.setFailed(`Action failed: ${message}`);
+    }
+}
+exports.Logger = Logger;
+//# sourceMappingURL=logger.js.map
+
+/***/ }),
+
+/***/ 7336:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.ReviewWorkflow = void 0;
+const validation_1 = __nccwpck_require__(844);
+const security_1 = __nccwpck_require__(1022);
+const review_1 = __nccwpck_require__(7650);
+const cost_1 = __nccwpck_require__(4952);
+const github_1 = __nccwpck_require__(8790);
+const github_api_1 = __nccwpck_require__(568);
+const ai_review_1 = __nccwpck_require__(1821);
+const logger_1 = __nccwpck_require__(9741);
+// Permission level constants
+const PERMISSION_LEVELS = {
+    ADMIN: 'admin',
+    WRITE: 'write',
+    READ: 'read',
+    NONE: 'none'
+};
+const REQUIRED_PERMISSIONS = [PERMISSION_LEVELS.ADMIN, PERMISSION_LEVELS.WRITE];
+/**
+ * Workflow orchestrator for the Bad Buggy code review process
+ */
+class ReviewWorkflow {
+    constructor(octokit, context, inputs, config) {
+        this.octokit = octokit;
+        this.context = context;
+        this.inputs = inputs;
+        this.config = config;
+    }
+    async validateInputs() {
+        const inputValidation = (0, validation_1.validateInputs)(this.inputs);
+        (0, validation_1.validateAndThrow)(inputValidation, 'Input validation failed');
+        logger_1.Logger.inputValidation();
+    }
+    async validateConfig() {
+        const configValidation = (0, validation_1.validateConfig)(this.config);
+        (0, validation_1.validateAndThrow)(configValidation, 'Configuration validation failed');
+        logger_1.Logger.configValidation();
+    }
+    async validatePullRequest() {
+        const pr = this.context.payload.pull_request;
+        const triggeringUser = this.context.payload.sender;
+        const repoOwner = this.context.repo.owner;
+        if (!pr || !triggeringUser) {
+            throw new Error('This action can only be run on pull requests with a valid sender');
+        }
+        logger_1.Logger.prInfo(pr.number, pr.title || 'No title', triggeringUser.login, pr.body || null, pr.html_url || '', pr.head?.ref || 'unknown', pr.base?.ref || 'unknown', pr.additions || 0, pr.deletions || 0, pr.changed_files || 0);
+        return { pr, triggeringUser, repoOwner };
+    }
+    async performSecurityChecks(pr, triggeringUser, repoOwner) {
+        logger_1.Logger.securityCheck();
+        const diff = await (0, github_api_1.getPRDiff)(this.octokit, this.context, pr);
+        const modifiedFiles = diff.map((file) => file.filename);
+        logger_1.Logger.modifiedFiles(modifiedFiles);
+        const securityCheck = (0, security_1.validateSecurity)(pr, triggeringUser, repoOwner, this.config, modifiedFiles);
+        if (!securityCheck.allowed) {
+            throw new Error(securityCheck.message || 'Security check failed');
+        }
+        logger_1.Logger.securityPassed();
+        return modifiedFiles;
+    }
+    async checkUserPermissions(triggeringUser, repoOwner) {
+        logger_1.Logger.userPermissionCheck(triggeringUser.login);
+        // Real-time permission validation
+        const userPermission = await (0, github_api_1.checkUserPermissions)(this.octokit, repoOwner, this.context.repo.repo, triggeringUser.login);
+        logger_1.Logger.userPermissionLevel(userPermission);
+        // Validate against required permission levels using constants
+        const hasRequiredPermission = REQUIRED_PERMISSIONS.includes(userPermission);
+        const isRepoOwner = triggeringUser.login === repoOwner;
+        if (!hasRequiredPermission && !isRepoOwner) {
+            throw new Error(`User does not have sufficient permissions to trigger AI reviews. Required: ${REQUIRED_PERMISSIONS.join(' or ')}, Current: ${userPermission}`);
+        }
+        // Double-check permissions haven't changed during execution
+        const revalidatedPermission = await (0, github_api_1.checkUserPermissions)(this.octokit, repoOwner, this.context.repo.repo, triggeringUser.login);
+        if (revalidatedPermission !== userPermission) {
+            throw new Error(`Permission level changed during execution. Original: ${userPermission}, Current: ${revalidatedPermission}`);
+        }
+        logger_1.Logger.userPermissionsPassed();
+    }
+    async processAndReviewDiff() {
+        logger_1.Logger.diffProcessing();
+        const pr = this.context.payload.pull_request;
+        if (!pr) {
+            throw new Error('Pull request not found in context');
+        }
+        const diff = await (0, github_api_1.getPRDiff)(this.octokit, this.context, pr);
+        const chunks = (0, review_1.chunkDiff)(diff, this.config);
+        logger_1.Logger.chunksCreated(chunks.length);
+        if (chunks.length === 0) {
+            logger_1.Logger.noFilesToReview();
+            return { comments: [], tokens: { input: 0, output: 0 }, fileChanges: diff };
+        }
+        logger_1.Logger.reviewStart();
+        let allComments = [];
+        let totalTokens = { input: 0, output: 0 };
+        for (let i = 0; i < chunks.length; i++) {
+            const chunk = chunks[i];
+            const chunkNumber = i + 1;
+            logger_1.Logger.chunkReview(chunkNumber, chunks.length, chunk.content.length, chunk.files);
+            logger_1.Logger.aiProviderCall(chunkNumber, this.inputs.aiProvider, this.inputs.model);
+            const startTime = Date.now();
+            const { comments, tokens } = await (0, ai_review_1.reviewChunk)(chunk, this.config, this.inputs.aiProvider, this.inputs.apiKey, this.inputs.model);
+            const duration = Date.now() - startTime;
+            logger_1.Logger.chunkResults(chunkNumber, comments.length, tokens.input, tokens.output, duration);
+            logger_1.Logger.chunkIssues(chunkNumber, comments);
+            allComments = allComments.concat(comments);
+            totalTokens = (0, cost_1.accumulateTokens)(totalTokens, tokens);
+        }
+        logger_1.Logger.totalResults(allComments.length, totalTokens.input, totalTokens.output);
+        return { comments: allComments, tokens: totalTokens, fileChanges: diff };
+    }
+    async processAndPostComments(allComments, totalTokens, modifiedFiles, pr, triggeringUser, fileChanges) {
+        logger_1.Logger.commentProcessing();
+        // Log severity breakdown
+        const severityCounts = allComments.reduce((acc, comment) => {
+            acc[comment.severity] = (acc[comment.severity] || 0) + 1;
+            return acc;
+        }, {});
+        logger_1.Logger.severityBreakdown(severityCounts);
+        const finalComments = (0, review_1.processComments)(allComments, this.config);
+        logger_1.Logger.finalComments(finalComments.length, allComments.length);
+        if (finalComments.length !== allComments.length) {
+            logger_1.Logger.filteringReasons(this.config.max_comments, this.config.prioritize_by_severity);
+        }
+        // Prepare PR information for summary
+        const prInfo = {
+            title: pr.title || 'No title',
+            description: pr.body || '',
+            author: triggeringUser.login,
+            filesChanged: modifiedFiles,
+            additions: pr.additions || 0,
+            deletions: pr.deletions || 0
+        };
+        const reviewBody = (0, github_1.formatReviewBody)(this.inputs.model, totalTokens, finalComments.length, prInfo);
+        if (finalComments.length > 0) {
+            logger_1.Logger.postingReview(reviewBody.length, finalComments.length);
+            const postStartTime = Date.now();
+            await (0, github_api_1.postReview)(this.octokit, this.context, pr, finalComments, reviewBody, fileChanges);
+            const postDuration = Date.now() - postStartTime;
+            logger_1.Logger.reviewPosted(finalComments.length, postDuration);
+        }
+        else {
+            logger_1.Logger.summaryOnly(reviewBody.length);
+            const postStartTime = Date.now();
+            await (0, github_api_1.postReview)(this.octokit, this.context, pr, [], reviewBody, fileChanges);
+            const postDuration = Date.now() - postStartTime;
+            logger_1.Logger.summaryPosted(postDuration);
+        }
+    }
+    async reportCosts(totalTokens) {
+        logger_1.Logger.costCalculation();
+        const cost = (0, cost_1.calculateCost)(this.inputs.model, totalTokens);
+        logger_1.Logger.costSummary(cost.totalCost, cost.inputCost, cost.outputCost);
+        logger_1.Logger.costBreakdown(totalTokens, cost.inputCost, cost.outputCost, cost.totalCost);
+    }
+}
+exports.ReviewWorkflow = ReviewWorkflow;
+//# sourceMappingURL=workflow.js.map
+
+/***/ }),
+
+/***/ 6118:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.AIProviderError = exports.ConfigValidationError = void 0;
+// Error types
+class ConfigValidationError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = 'ConfigValidationError';
+    }
+}
+exports.ConfigValidationError = ConfigValidationError;
+class AIProviderError extends Error {
+    constructor(message, statusCode) {
+        super(message);
+        this.statusCode = statusCode;
+        this.name = 'AIProviderError';
+    }
+}
+exports.AIProviderError = AIProviderError;
+//# sourceMappingURL=types.js.map
+
+/***/ }),
+
+/***/ 844:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.validateAndThrow = exports.validateInputs = exports.validateConfig = void 0;
+const types_1 = __nccwpck_require__(6118);
+// Pure function to validate configuration
+const validateConfig = (config) => {
+    const errors = [];
+    const warnings = [];
+    // Validate review_prompt
+    if (!config.review_prompt || typeof config.review_prompt !== 'string' || config.review_prompt.trim() === '') {
+        errors.push('review_prompt must be a non-empty string');
+    }
+    else if (config.review_prompt.length > 10000) {
+        warnings.push('review_prompt is very long and may cause API issues');
+    }
+    // Validate max_comments
+    if (typeof config.max_comments !== 'number' || config.max_comments <= 0) {
+        errors.push('max_comments must be a positive number');
+    }
+    else if (config.max_comments > 20) {
+        warnings.push('max_comments is high and may cause API rate limits');
+    }
+    // Validate prioritize_by_severity
+    if (typeof config.prioritize_by_severity !== 'boolean') {
+        errors.push('prioritize_by_severity must be a boolean');
+    }
+    // Validate arrays
+    if (!Array.isArray(config.review_aspects)) {
+        errors.push('review_aspects must be an array');
+    }
+    if (!Array.isArray(config.ignore_patterns)) {
+        errors.push('ignore_patterns must be an array');
+    }
+    if (!Array.isArray(config.allowed_users)) {
+        errors.push('allowed_users must be an array');
+    }
+    return {
+        isValid: errors.length === 0,
+        errors,
+        warnings
+    };
+};
+exports.validateConfig = validateConfig;
+// Pure function to validate inputs
+const validateInputs = (inputs) => {
+    const errors = [];
+    // Validate GitHub token
+    if (!inputs.githubToken || typeof inputs.githubToken !== 'string') {
+        errors.push('GitHub token is required');
+    }
+    else if (!inputs.githubToken.startsWith('ghp_') && !inputs.githubToken.startsWith('ghs_') && !inputs.githubToken.startsWith('github_pat_')) {
+        errors.push('GitHub token format appears invalid');
+    }
+    // Validate AI provider
+    if (!['anthropic', 'openrouter'].includes(inputs.aiProvider)) {
+        errors.push('AI provider must be either "anthropic" or "openrouter"');
+    }
+    // Validate API key
+    if (!inputs.apiKey || typeof inputs.apiKey !== 'string') {
+        errors.push('API key is required');
+    }
+    else {
+        // Basic format validation based on provider
+        if (inputs.aiProvider === 'anthropic' && !inputs.apiKey.startsWith('sk-ant-')) {
+            errors.push('Anthropic API key format appears invalid (should start with sk-ant-)');
+        }
+        else if (inputs.aiProvider === 'openrouter' && !inputs.apiKey.startsWith('sk-or-')) {
+            errors.push('OpenRouter API key format appears invalid (should start with sk-or-)');
+        }
+    }
+    // Validate model
+    if (!inputs.model || typeof inputs.model !== 'string') {
+        errors.push('Model is required');
+    }
+    return {
+        isValid: errors.length === 0,
+        errors
+    };
+};
+exports.validateInputs = validateInputs;
+// Effect: Validate and throw if invalid
+const validateAndThrow = (validation, errorType) => {
+    if (!validation.isValid) {
+        throw new types_1.ConfigValidationError(`${errorType}: ${validation.errors.join(', ')}`);
+    }
+};
+exports.validateAndThrow = validateAndThrow;
+//# sourceMappingURL=validation.js.map
+
+/***/ }),
+
 /***/ 7351:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -36660,428 +38054,6 @@ function wrappy (fn, cb) {
 
 /***/ }),
 
-/***/ 817:
-/***/ ((module) => {
-
-// Default configuration for bad-buggy AI code review
-const DEFAULT_CONFIG = {
-  review_prompt: `CONTEXT: Today is {{DATE}}. Review with current best practices in mind.
-
-MANDATORY FIRST STEP - IDENTIFY MOST CRITICAL ISSUE:
-Priority 1: Functional failures (broken core functionality, data corruption risks, critical security vulnerabilities, memory leaks)
-Priority 2: System stability (poor error handling, race conditions, performance bottlenecks)  
-Priority 3: Maintainability blockers (architectural violations, tight coupling, code duplication)
-
-Output format: "MOST CRITICAL ISSUE: [Category] - [Description]. IMPACT: [What breaks if unfixed]. IMMEDIATE ACTION: [Specific fix needed]."
-
-EVALUATION FRAMEWORK:
-- Functional Correctness: Requirements met, edge cases handled, input validation, boundary conditions
-- Technical Implementation: Algorithm efficiency, architecture decisions, technology usage appropriately
-- Code Quality: Readability (clear naming, formatting), documentation (explains why not just what), comprehensive error handling
-- Testing & Reliability: Unit/integration tests, edge case coverage, proper mocking
-- Security & Safety: Input sanitization, authentication checks, no hardcoded secrets
-
-ANTIPATTERN DETECTION - Flag and educate on:
-- God objects/functions (200+ line functions doing everything)
-- Magic numbers/strings (use constants with descriptive names)
-- Poor error handling (silent failures, swallowing exceptions)
-- Tight coupling (changes requiring modifications across unrelated modules)
-- Code duplication (repeated logic that should be abstracted)
-
-COMMENT STRATEGY: Only add comments for genuinely critical issues that will impact functionality, security, or long-term maintainability. Skip minor style preferences unless they create real problems.`,
-  max_comments: 5,
-  prioritize_by_severity: true,
-  review_aspects: [
-    "bugs",
-    "security_vulnerabilities",
-    "performance_issues",
-    "code_quality",
-    "best_practices",
-    "architecture_suggestions",
-    "code_organization",
-    "code_readability",
-    "code_maintainability",
-  ],
-  ignore_patterns: [],
-  allowed_users: [], // Empty array means allow all users
-};
-
-module.exports = {
-  DEFAULT_CONFIG,
-};
-
-
-/***/ }),
-
-/***/ 1269:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-const core = __nccwpck_require__(2186);
-
-class AIProviderError extends Error {
-  constructor(message, provider, status) {
-    super(message);
-    this.name = "AIProviderError";
-    this.provider = provider;
-    this.status = status;
-  }
-}
-
-async function callAnthropic(prompt, model, apiKey) {
-  if (!apiKey) {
-    throw new AIProviderError("Anthropic API key is required", "anthropic");
-  }
-
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: model,
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 4000,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new AIProviderError(
-      `Anthropic API error: ${response.statusText}`,
-      "anthropic",
-      response.status
-    );
-  }
-
-  const data = await response.json();
-  return data.content[0].text;
-}
-
-async function callOpenRouter(prompt, model, apiKey) {
-  if (!apiKey) {
-    throw new AIProviderError("OpenRouter API key is required", "openrouter");
-  }
-
-  const response = await fetch(
-    "https://openrouter.ai/api/v1/chat/completions",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-        "HTTP-Referer": "https://github.com/gundurraga/bad-buggy",
-        "X-Title": "bad-buggy",
-      },
-      body: JSON.stringify({
-        model: model,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    }
-  );
-
-  if (!response.ok) {
-    throw new AIProviderError(
-      `OpenRouter API error: ${response.statusText}`,
-      "openrouter",
-      response.status
-    );
-  }
-
-  const data = await response.json();
-  return data.choices[0].message.content;
-}
-
-async function callAIProvider(provider, prompt, model, apiKey) {
-  try {
-    switch (provider) {
-      case "anthropic":
-        return await callAnthropic(prompt, model, apiKey);
-      case "openrouter":
-        return await callOpenRouter(prompt, model, apiKey);
-      default:
-        throw new AIProviderError(`Unknown provider: ${provider}`, provider);
-    }
-  } catch (error) {
-    if (error instanceof AIProviderError) {
-      throw error;
-    }
-    throw new AIProviderError(
-      `Provider call failed: ${error.message}`,
-      provider
-    );
-  }
-}
-
-module.exports = {
-  callAIProvider,
-  AIProviderError,
-};
-
-
-/***/ }),
-
-/***/ 2643:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-const core = __nccwpck_require__(2186);
-
-async function performSecurityCheck(octokit, context, pr, config) {
-  const triggeringUser = context.actor;
-  const prAuthor = pr.user.login;
-  const repoOwner = context.repo.owner;
-
-  try {
-    // 1. CRITICAL: Check if from external fork (highest risk)
-    if (pr.head.repo.full_name !== pr.base.repo.full_name) {
-      // External fork - very restrictive
-      if (triggeringUser !== repoOwner) {
-        return {
-          allowed: false,
-          reason: `External fork PR from ${prAuthor}, triggered by ${triggeringUser} (not repo owner)`,
-          message: `Automated review skipped: External fork PRs can only be reviewed when triggered by repository owner (@${repoOwner}).`,
-        };
-      }
-    }
-
-    // 2. Check repository collaborator permissions
-    let hasWriteAccess = false;
-    let permissionCheckFailed = false;
-
-    try {
-      const { data: collaborator } =
-        await octokit.rest.repos.getCollaboratorPermissionLevel({
-          owner: context.repo.owner,
-          repo: context.repo.repo,
-          username: triggeringUser,
-        });
-      hasWriteAccess = ["admin", "write"].includes(collaborator.permission);
-    } catch (error) {
-      // Differentiate between user not found vs API failure
-      if (error.status === 404) {
-        // User is not a collaborator - this is expected
-        hasWriteAccess = false;
-      } else {
-        // API failure (rate limit, network, etc.) - security risk
-        core.error(`GitHub API permission check failed: ${error.message}`);
-        permissionCheckFailed = true;
-        hasWriteAccess = false;
-      }
-    }
-
-    // Fail securely if we couldn't verify permissions
-    if (permissionCheckFailed) {
-      return {
-        allowed: false,
-        reason: `Permission check failed for ${triggeringUser} - cannot verify authorization`,
-        message: `Automated review skipped: Unable to verify user permissions due to API error. Please try again later.`,
-      };
-    }
-
-    // 3. Check explicit allowlist (if configured)
-    let allowedUsers = [];
-
-    // Option 1: Static config allowlist
-    if (config.allowed_users && config.allowed_users.length > 0) {
-      allowedUsers = config.allowed_users;
-    }
-    // Option 2: Environment-based allowlist (for organizations)
-    else if (
-      config.allowed_users_env &&
-      process.env[config.allowed_users_env]
-    ) {
-      allowedUsers = process.env[config.allowed_users_env]
-        .split(",")
-        .map((u) => u.trim());
-      core.info(
-        `Using environment-based allowlist: ${allowedUsers.length} users`
-      );
-    }
-
-    const isInAllowlist =
-      allowedUsers.length > 0 ? allowedUsers.includes(triggeringUser) : true; // No allowlist = allow all collaborators
-
-    // 4. Final decision logic
-    const isRepoOwner = triggeringUser === repoOwner;
-    const isAuthorized = isRepoOwner || (hasWriteAccess && isInAllowlist);
-
-    if (!isAuthorized) {
-      return {
-        allowed: false,
-        reason: `User ${triggeringUser} lacks required permissions (owner: ${isRepoOwner}, write access: ${hasWriteAccess}, allowlisted: ${isInAllowlist})`,
-        message: `Automated review skipped: Only repository owner and authorized collaborators can trigger reviews.`,
-      };
-    }
-
-    // 5. Check for workflow file modifications (security risk)
-    const { data: files } = await octokit.rest.pulls.listFiles({
-      owner: context.repo.owner,
-      repo: context.repo.repo,
-      pull_number: pr.number,
-    });
-
-    const workflowFileModified = files.some(
-      (file) =>
-        file.filename.startsWith(".github/workflows/") ||
-        file.filename.includes("action.yml") ||
-        file.filename.includes("action.yaml")
-    );
-
-    if (workflowFileModified && !isRepoOwner) {
-      return {
-        allowed: false,
-        reason: `Workflow files modified by non-owner ${triggeringUser}`,
-        message: `Automated review skipped: Workflow file changes can only be reviewed by repository owner for security.`,
-      };
-    }
-
-    return {
-      allowed: true,
-      reason: `Authorized: ${triggeringUser} (owner: ${isRepoOwner}, collaborator: ${hasWriteAccess})`,
-      message: null,
-    };
-  } catch (error) {
-    core.error(`Security check failed: ${error.message}`);
-    return {
-      allowed: false,
-      reason: `Security check error: ${error.message}`,
-      message: `Automated review skipped: Unable to verify user permissions.`,
-    };
-  }
-}
-
-module.exports = {
-  performSecurityCheck,
-};
-
-
-/***/ }),
-
-/***/ 2936:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-const core = __nccwpck_require__(2186);
-
-class ConfigValidationError extends Error {
-  constructor(message, field) {
-    super(message);
-    this.name = "ConfigValidationError";
-    this.field = field;
-  }
-}
-
-function validateConfig(config) {
-  const errors = [];
-
-  // Validate required fields
-  if (
-    !config.review_prompt ||
-    typeof config.review_prompt !== "string" ||
-    config.review_prompt.trim() === ""
-  ) {
-    errors.push("review_prompt must be a non-empty string");
-  }
-
-  if (typeof config.max_comments !== "number" || config.max_comments < 1) {
-    errors.push("max_comments must be a positive number");
-  }
-
-  if (typeof config.prioritize_by_severity !== "boolean") {
-    errors.push("prioritize_by_severity must be a boolean");
-  }
-
-  // Validate review_aspects
-  if (!Array.isArray(config.review_aspects)) {
-    errors.push("review_aspects must be an array");
-  }
-
-  // Validate ignore_patterns
-  if (!Array.isArray(config.ignore_patterns)) {
-    errors.push("ignore_patterns must be an array");
-  }
-
-  // Validate allowed_users
-  if (!Array.isArray(config.allowed_users)) {
-    errors.push("allowed_users must be an array");
-  }
-
-  // Validate ranges
-  if (config.max_comments > 20) {
-    core.warning(
-      "max_comments is very high (>20), this may result in high costs"
-    );
-  }
-
-  if (config.review_prompt.length > 10000) {
-    core.warning(
-      "review_prompt is very long (>10k chars), this may result in high token costs"
-    );
-  }
-
-  if (errors.length > 0) {
-    throw new ConfigValidationError(
-      `Configuration validation failed:\n${errors.join("\n")}`,
-      "config"
-    );
-  }
-
-  return config;
-}
-
-function validateInputs(inputs) {
-  const { githubToken, aiProvider, apiKey, model } = inputs;
-  const errors = [];
-
-  if (!githubToken) {
-    errors.push("github-token is required");
-  } else if (!githubToken.match(/^(ghp_|ghs_|github_pat_)/)) {
-    errors.push(
-      "github-token must be a valid GitHub token (starts with ghp_, ghs_, or github_pat_)"
-    );
-  }
-
-  if (!aiProvider) {
-    errors.push("ai-provider is required");
-  } else if (!["anthropic", "openrouter"].includes(aiProvider)) {
-    errors.push("ai-provider must be 'anthropic' or 'openrouter'");
-  }
-
-  if (!apiKey) {
-    errors.push("api-key is required");
-  } else {
-    // Basic API key format validation
-    if (aiProvider === "anthropic" && !apiKey.startsWith("sk-ant-")) {
-      errors.push("Anthropic API key should start with 'sk-ant-'");
-    } else if (aiProvider === "openrouter" && !apiKey.startsWith("sk-or-")) {
-      errors.push("OpenRouter API key should start with 'sk-or-'");
-    } else if (apiKey.length < 20) {
-      errors.push("API key seems too short to be valid");
-    }
-  }
-
-  if (!model) {
-    errors.push("model is required");
-  }
-
-  if (errors.length > 0) {
-    throw new ConfigValidationError(
-      `Input validation failed:\n${errors.join("\n")}`,
-      "inputs"
-    );
-  }
-
-  return inputs;
-}
-
-module.exports = {
-  validateConfig,
-  validateInputs,
-  ConfigValidationError,
-};
-
-
-/***/ }),
-
 /***/ 2877:
 /***/ ((module) => {
 
@@ -39017,402 +39989,13 @@ module.exports = JSON.parse('[[[0,44],"disallowed_STD3_valid"],[[45,46],"valid"]
 /******/ 	if (typeof __nccwpck_require__ !== 'undefined') __nccwpck_require__.ab = __dirname + "/";
 /******/ 	
 /************************************************************************/
-var __webpack_exports__ = {};
-// This entry need to be wrapped in an IIFE because it need to be isolated against other modules in the chunk.
-(() => {
-const core = __nccwpck_require__(2186);
-const github = __nccwpck_require__(5438);
-const yaml = __nccwpck_require__(1917);
-const fs = __nccwpck_require__(7147);
-const {
-  callAIProvider,
-  AIProviderError,
-} = __nccwpck_require__(1269);
-const {
-  validateConfig,
-  validateInputs,
-  ConfigValidationError,
-} = __nccwpck_require__(2936);
-const { DEFAULT_CONFIG } = __nccwpck_require__(817);
-const { performSecurityCheck } = __nccwpck_require__(2643);
-
-// Model pricing (per 1M tokens)
-const MODEL_PRICING = {
-  "claude-4": { input: 3.0, output: 15.0 },
-  "claude-4-opus": { input: 15.0, output: 75.0 },
-};
-
-function countTokens(text, model) {
-  // Simple character-based estimation that works for all models
-  // This is accurate enough for cost tracking purposes
-  let avgCharsPerToken = 3.5; // Default conservative estimate
-
-  // Adjust based on model type (rough estimates)
-  if (model.includes("claude")) {
-    avgCharsPerToken = 3.8; // Claude tends to have slightly longer tokens
-  } else if (model.includes("gpt-4")) {
-    avgCharsPerToken = 3.2; // GPT-4 is more efficient
-  } else if (model.includes("gpt-3")) {
-    avgCharsPerToken = 3.0; // GPT-3 models
-  }
-
-  return Math.ceil(text.length / avgCharsPerToken);
-}
-
-function calculateCost(model, tokens) {
-  const pricing = MODEL_PRICING[model] || MODEL_PRICING["claude-4"];
-  const inputCost = (tokens.input / 1000000) * pricing.input;
-  const outputCost = (tokens.output / 1000000) * pricing.output;
-  const totalCost = inputCost + outputCost;
-  return { inputCost, outputCost, totalCost, pricing };
-}
-
-async function run() {
-  try {
-    // Get inputs
-    const githubToken = core.getInput("github-token", { required: true });
-    const aiProvider = core.getInput("ai-provider", { required: true });
-    const apiKey = core.getInput("api-key", { required: true });
-    const model = core.getInput("model", { required: true });
-    const configFile =
-      core.getInput("config-file") || ".github/ai-review-config.yml";
-
-    // Validate inputs
-    validateInputs({ githubToken, aiProvider, apiKey, model });
-
-    // Load and validate configuration
-    const config = await loadConfig(configFile);
-    config.model = model; // Override with input model
-    validateConfig(config);
-
-    // Get PR information
-    const octokit = github.getOctokit(githubToken);
-    const context = github.context;
-
-    if (!context.payload.pull_request) {
-      core.setFailed("This action only works on pull requests");
-      return;
-    }
-
-    const pr = context.payload.pull_request;
-
-    // COMPREHENSIVE SECURITY CHECK for public repositories
-    const securityCheck = await performSecurityCheck(
-      octokit,
-      context,
-      pr,
-      config
-    );
-    if (!securityCheck.allowed) {
-      core.info(`Review skipped: ${securityCheck.reason}`);
-      await octokit.rest.issues.createComment({
-        owner: context.repo.owner,
-        repo: context.repo.repo,
-        issue_number: pr.number,
-        body: `🔒 ${securityCheck.message}`,
-      });
-      return;
-    }
-
-    // Get PR diff
-    const diff = await getPRDiff(octokit, context, pr, config);
-
-    // Chunk the diff if needed
-    const chunks = chunkDiff(diff, config);
-
-    // Review each chunk
-    const reviews = [];
-    let totalCost = { input: 0, output: 0 };
-
-    for (const chunk of chunks) {
-      const review = await reviewChunk(chunk, config, aiProvider, apiKey);
-      reviews.push(...review.comments);
-      totalCost.input += review.inputTokens;
-      totalCost.output += review.outputTokens;
-    }
-
-    // Sort and limit comments
-    const finalComments = processComments(reviews, config);
-
-    // Post review
-    await postReview(
-      octokit,
-      context,
-      pr,
-      finalComments,
-      config.model,
-      totalCost
-    );
-
-    // Report cost (to console logs)
-    reportCost(config.model, totalCost);
-  } catch (error) {
-    if (error instanceof ConfigValidationError) {
-      core.setFailed(`Configuration error: ${error.message}`);
-    } else {
-      core.setFailed(`Action failed: ${error.message}`);
-    }
-  }
-}
-
-async function loadConfig(configFile) {
-  try {
-    const configContent = fs.readFileSync(configFile, "utf8");
-    const userConfig = yaml.load(configContent);
-    return { ...DEFAULT_CONFIG, ...userConfig };
-  } catch (error) {
-    core.info(`No config file found at ${configFile}, using defaults`);
-    return DEFAULT_CONFIG;
-  }
-}
-
-async function getPRDiff(octokit, context, pr, config) {
-  const { data: files } = await octokit.rest.pulls.listFiles({
-    owner: context.repo.owner,
-    repo: context.repo.repo,
-    pull_number: pr.number,
-  });
-
-  let diff = "";
-  for (const file of files) {
-    // Skip ignored files
-    if (shouldIgnoreFile(file.filename, config)) continue;
-
-    diff += `\n\n--- File: ${file.filename} ---\n`;
-    diff += `Status: ${file.status}\n`;
-    diff += `Changes: +${file.additions} -${file.deletions}\n`;
-    if (file.patch) {
-      diff += file.patch;
-    }
-  }
-
-  return diff;
-}
-
-function shouldIgnoreFile(filename, config) {
-  // Simple pattern matching - could be enhanced
-  const ignorePatterns = config.ignore_patterns || [];
-  for (const pattern of ignorePatterns) {
-    if (filename.includes(pattern.replace("*", ""))) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function chunkDiff(diff, config) {
-  // Simple chunking by size - aim for ~4000 tokens per chunk
-  const MAX_CHUNK_SIZE = 12000; // characters, roughly 3000 tokens
-  const chunks = [];
-
-  if (diff.length <= MAX_CHUNK_SIZE) {
-    return [diff];
-  }
-
-  // Split by files
-  const files = diff.split("\n\n--- File:");
-  let currentChunk = "";
-
-  for (const file of files) {
-    if (currentChunk.length + file.length > MAX_CHUNK_SIZE) {
-      chunks.push(currentChunk);
-      currentChunk = "--- File:" + file;
-    } else {
-      currentChunk += "\n\n--- File:" + file;
-    }
-  }
-
-  if (currentChunk) {
-    chunks.push(currentChunk);
-  }
-
-  return chunks;
-}
-
-async function reviewChunk(chunk, config, provider, apiKey) {
-  const prompt = `${config.review_prompt.replace(
-    "{{DATE}}",
-    new Date().toISOString().split("T")[0]
-  )}
-
-Please review the following code changes and provide feedback as a JSON array of comments.
-Each comment should have:
-- file: the filename
-- line: the line number (from the diff)
-- end_line: (optional) the end line for multi-line comments
-- severity: "critical", "major", "minor", or "suggestion"
-- category: one of ${config.review_aspects.join(", ")}
-- comment: your feedback
-
-Examples of correct JSON responses (only for CRITICAL issues):
-
-[
-  {
-    "file": "src/auth.js",
-    "line": 45,
-    "severity": "critical",
-    "category": "security_vulnerabilities",
-    "comment": "CRITICAL: SQL injection vulnerability. User input 'userInput' is directly concatenated into query without sanitization. IMPACT: Database compromise, data theft. IMMEDIATE ACTION: Use parameterized queries or ORM methods."
-  },
-  {
-    "file": "src/payment.js", 
-    "line": 78,
-    "end_line": 85,
-    "severity": "critical", 
-    "category": "bugs",
-    "comment": "CRITICAL: Race condition in payment processing. Multiple concurrent transactions can cause double-charging. IMPACT: Financial loss, customer complaints. IMMEDIATE ACTION: Add transaction locking or atomic operations."
-  }
-]
-
-Code changes:
-${chunk}
-
-Respond with ONLY a JSON array, no other text. Do not include explanations, thinking, or any text outside the JSON array. Start your response with [ and end with ].`;
-
-  let response;
-  let inputTokens = countTokens(prompt, config.model);
-  let outputTokens = 0;
-
-  try {
-    response = await callAIProvider(provider, prompt, config.model, apiKey);
-    outputTokens = countTokens(response, config.model);
-  } catch (error) {
-    if (error instanceof AIProviderError) {
-      throw new Error(`${error.provider} provider error: ${error.message}`);
-    }
-    throw error;
-  }
-
-  // Parse response
-  let comments = [];
-  try {
-    // Try to parse the full response first
-    comments = JSON.parse(response);
-  } catch (e) {
-    // If that fails, try to extract JSON from the response
-    try {
-      const jsonMatch = response.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        comments = JSON.parse(jsonMatch[0]);
-      } else {
-        core.warning(
-          "Failed to parse AI response as JSON - no JSON array found"
-        );
-        comments = [];
-      }
-    } catch (e2) {
-      core.warning("Failed to parse AI response as JSON");
-      core.warning(`Response was: ${response.substring(0, 500)}...`);
-      comments = [];
-    }
-  }
-
-  return { comments, inputTokens, outputTokens };
-}
-
-function processComments(comments, config) {
-  // Remove duplicates
-  const unique = comments.filter(
-    (comment, index, self) =>
-      index ===
-      self.findIndex((c) => c.file === comment.file && c.line === comment.line)
-  );
-
-  // Sort by severity if needed
-  if (config.prioritize_by_severity) {
-    const severityOrder = { critical: 0, major: 1, minor: 2, suggestion: 3 };
-    unique.sort(
-      (a, b) => severityOrder[a.severity] - severityOrder[b.severity]
-    );
-  }
-
-  // Limit number of comments
-  return unique.slice(0, config.max_comments);
-}
-
-async function postReview(octokit, context, pr, comments, model, totalTokens) {
-  const { totalCost } = calculateCost(model, totalTokens);
-
-  let reviewBody = `🐰 Bad Buggy review completed with ${comments.length} comments\n\n`;
-  reviewBody += `**Review Cost:**\n`;
-  reviewBody += `- Model: ${model}\n`;
-  reviewBody += `- Total cost: $${totalCost.toFixed(4)} (equal to ${Math.round(
-    1 / totalCost
-  )} reviews per dollar)\n`;
-  reviewBody += `- Tokens: ${totalTokens.input.toLocaleString()} input, ${totalTokens.output.toLocaleString()} output`;
-
-  if (comments.length === 0) {
-    reviewBody = `bad-buggy found no issues! Great job! 🎉\n\n${reviewBody}`;
-    await octokit.rest.issues.createComment({
-      owner: context.repo.owner,
-      repo: context.repo.repo,
-      issue_number: pr.number,
-      body: reviewBody,
-    });
-    return;
-  }
-
-  // Create review
-  const review = {
-    owner: context.repo.owner,
-    repo: context.repo.repo,
-    pull_number: pr.number,
-    event: "COMMENT",
-    body: reviewBody,
-    comments: comments.map((c) => {
-      const comment = {
-        path: c.file,
-        line: c.line || 1,
-        body: `**${c.severity}** (${c.category}): ${c.comment}`,
-      };
-      if (c.end_line && c.end_line > c.line) {
-        comment.start_line = c.line;
-        comment.line = c.end_line;
-      }
-      return comment;
-    }),
-  };
-
-  try {
-    await octokit.rest.pulls.createReview(review);
-    core.info(`Posted ${comments.length} review comments`);
-  } catch (error) {
-    core.error(`Failed to post review: ${error.message}`);
-    // Fall back to posting as individual comments
-    for (const comment of comments) {
-      try {
-        await octokit.rest.issues.createComment({
-          owner: context.repo.owner,
-          repo: context.repo.repo,
-          issue_number: pr.number,
-          body: `**${comment.file}:${comment.line}${
-            comment.end_line ? `-${comment.end_line}` : ""
-          }**: ${comment.comment}`,
-        });
-      } catch (e) {
-        core.error(`Failed to post comment: ${e.message}`);
-      }
-    }
-  }
-}
-
-function reportCost(model, tokens) {
-  const { totalCost } = calculateCost(model, tokens);
-
-  core.info("=== Bad Buggy Cost Summary ===");
-  core.info(`Model: ${model}`);
-  core.info(`Input tokens: ${tokens.input.toLocaleString()}`);
-  core.info(`Output tokens: ${tokens.output.toLocaleString()}`);
-  core.info(`Total cost: $${totalCost.toFixed(4)}`);
-  core.info("============================");
-}
-
-// Run the action
-run();
-
-})();
-
-module.exports = __webpack_exports__;
+/******/ 	
+/******/ 	// startup
+/******/ 	// Load entry module and return exports
+/******/ 	// This entry module is referenced by other modules so it can't be inlined
+/******/ 	var __webpack_exports__ = __nccwpck_require__(9496);
+/******/ 	module.exports = __webpack_exports__;
+/******/ 	
 /******/ })()
 ;
 //# sourceMappingURL=index.js.map

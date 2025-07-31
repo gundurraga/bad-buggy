@@ -1,5 +1,7 @@
-// Default configuration for bad-buggy AI code review
-const DEFAULT_CONFIG = {
+import { Config } from '../types';
+
+// Default configuration for Bad Buggy code review
+export const DEFAULT_CONFIG: Config = {
   review_prompt: `CONTEXT: Today is {{DATE}}. Review with current best practices in mind.
 
 MANDATORY FIRST STEP - IDENTIFY MOST CRITICAL ISSUE:
@@ -27,20 +29,16 @@ COMMENT STRATEGY: Only add comments for genuinely critical issues that will impa
   max_comments: 5,
   prioritize_by_severity: true,
   review_aspects: [
-    "bugs",
-    "security_vulnerabilities",
-    "performance_issues",
-    "code_quality",
-    "best_practices",
-    "architecture_suggestions",
-    "code_organization",
-    "code_readability",
-    "code_maintainability",
+    'bugs',
+    'security_vulnerabilities',
+    'performance_issues',
+    'code_quality',
+    'best_practices',
+    'architecture_suggestions',
+    'code_organization',
+    'code_readability',
+    'code_maintainability',
   ],
   ignore_patterns: [],
   allowed_users: [], // Empty array means allow all users
-};
-
-module.exports = {
-  DEFAULT_CONFIG,
 };

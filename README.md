@@ -1,10 +1,10 @@
-# 🐰 Bad Buggy
+# 🐰⚡ Bad Buggy
 
 A simple, cost-effective GitHub Action that uses AI to review and comment your pull requests. Get instant feedback with transparent cost tracking.
 
 ## What it does
 
-- 🤖 **AI-powered code reviews** using Claude models
+- 🐰⚡ **Bad Buggy code reviews** using Claude models
 - 💰 **Transparent cost tracking** - see exactly what each review costs
 - 🎯 **Smart commenting** - focuses on critical issues first
 - 🔧 **Easy setup** - just add a workflow file
@@ -16,7 +16,7 @@ A simple, cost-effective GitHub Action that uses AI to review and comment your p
 Create `.github/workflows/ai-review.yml`:
 
 ```yaml
-name: AI Code Review
+name: Bad Buggy Code Review
 on:
   pull_request:
     types: [opened, synchronize]

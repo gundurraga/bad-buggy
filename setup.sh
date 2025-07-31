@@ -18,7 +18,7 @@ mkdir -p .github/workflows
 # Create workflow file
 echo "📝 Creating workflow file..."
 cat > .github/workflows/ai-review.yml << 'EOF'
-name: AI Code Review
+name: Bad Buggy Code Review
 on:
   pull_request:
     types: [opened, synchronize]

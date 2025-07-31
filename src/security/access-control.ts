@@ -1,6 +1,37 @@
-const core = require("@actions/core");
+import * as core from '@actions/core';
+import { Context } from '@actions/github/lib/context';
+import { getOctokit } from '@actions/github';
+import { Config } from '../types';
 
-async function performSecurityCheck(octokit, context, pr, config) {
+type Octokit = ReturnType<typeof getOctokit>;
+
+interface PullRequest {
+  user: { login: string };
+  head: { repo: { full_name: string } };
+  base: { repo: { full_name: string } };
+  number: number;
+}
+
+interface SecurityCheckResult {
+  allowed: boolean;
+  reason: string;
+  message: string | null;
+}
+
+interface CollaboratorPermission {
+  permission: string;
+}
+
+interface PullRequestFile {
+  filename: string;
+}
+
+export async function performSecurityCheck(
+  octokit: Octokit,
+  context: Context,
+  pr: PullRequest,
+  config: Config
+): Promise<SecurityCheckResult> {
   const triggeringUser = context.actor;
   const prAuthor = pr.user.login;
   const repoOwner = context.repo.owner;
@@ -23,21 +54,21 @@ async function performSecurityCheck(octokit, context, pr, config) {
     let permissionCheckFailed = false;
 
     try {
-      const { data: collaborator } =
-        await octokit.rest.repos.getCollaboratorPermissionLevel({
-          owner: context.repo.owner,
-          repo: context.repo.repo,
-          username: triggeringUser,
-        });
-      hasWriteAccess = ["admin", "write"].includes(collaborator.permission);
-    } catch (error) {
+      const { data: collaborator } = await octokit.rest.repos.getCollaboratorPermissionLevel({
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+        username: triggeringUser,
+      });
+      hasWriteAccess = ['admin', 'write'].includes((collaborator as CollaboratorPermission).permission);
+    } catch (error: unknown) {
       // Differentiate between user not found vs API failure
-      if (error.status === 404) {
+      if (error && typeof error === 'object' && 'status' in error && error.status === 404) {
         // User is not a collaborator - this is expected
         hasWriteAccess = false;
       } else {
         // API failure (rate limit, network, etc.) - security risk
-        core.error(`GitHub API permission check failed: ${error.message}`);
+        const message = error instanceof Error ? error.message : String(error);
+        core.error(`GitHub API permission check failed: ${message}`);
         permissionCheckFailed = true;
         hasWriteAccess = false;
       }
@@ -53,7 +84,7 @@ async function performSecurityCheck(octokit, context, pr, config) {
     }
 
     // 3. Check explicit allowlist (if configured)
-    let allowedUsers = [];
+    let allowedUsers: string[] = [];
 
     // Option 1: Static config allowlist
     if (config.allowed_users && config.allowed_users.length > 0) {
@@ -64,9 +95,12 @@ async function performSecurityCheck(octokit, context, pr, config) {
       config.allowed_users_env &&
       process.env[config.allowed_users_env]
     ) {
-      allowedUsers = process.env[config.allowed_users_env]
-        .split(",")
-        .map((u) => u.trim());
+      const envValue = process.env[config.allowed_users_env];
+      if (envValue) {
+        allowedUsers = envValue
+          .split(',')
+          .map((u) => u.trim());
+      }
       core.info(
         `Using environment-based allowlist: ${allowedUsers.length} users`
       );
@@ -94,11 +128,11 @@ async function performSecurityCheck(octokit, context, pr, config) {
       pull_number: pr.number,
     });
 
-    const workflowFileModified = files.some(
+    const workflowFileModified = (files as PullRequestFile[]).some(
       (file) =>
-        file.filename.startsWith(".github/workflows/") ||
-        file.filename.includes("action.yml") ||
-        file.filename.includes("action.yaml")
+        file.filename.startsWith('.github/workflows/') ||
+        file.filename.includes('action.yml') ||
+        file.filename.includes('action.yaml')
     );
 
     if (workflowFileModified && !isRepoOwner) {
@@ -114,16 +148,13 @@ async function performSecurityCheck(octokit, context, pr, config) {
       reason: `Authorized: ${triggeringUser} (owner: ${isRepoOwner}, collaborator: ${hasWriteAccess})`,
       message: null,
     };
-  } catch (error) {
-    core.error(`Security check failed: ${error.message}`);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    core.error(`Security check failed: ${message}`);
     return {
       allowed: false,
-      reason: `Security check error: ${error.message}`,
+      reason: `Security check error: ${message}`,
       message: `Automated review skipped: Unable to verify user permissions.`,
     };
   }
 }
-
-module.exports = {
-  performSecurityCheck,
-};

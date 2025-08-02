@@ -1,6 +1,40 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ReviewWorkflow = void 0;
+const core = __importStar(require("@actions/core"));
 const validation_1 = require("../validation");
 const security_1 = require("../domains/security");
 const review_1 = require("../domains/review");
@@ -83,12 +117,42 @@ class ReviewWorkflow {
         if (!pr) {
             throw new Error('Pull request not found in context');
         }
-        const diff = await (0, github_api_1.getPRDiff)(this.octokit, this.context, pr);
-        const chunks = (0, review_1.chunkDiff)(diff, this.config);
+        // Always handle incremental reviews (simplified approach)
+        const reviewState = await (0, github_api_1.getReviewState)(this.octokit, this.context, pr);
+        const incrementalDiff = await (0, github_api_1.getIncrementalDiff)(this.octokit, this.context, pr, reviewState?.lastReviewedSha);
+        const incrementalResult = (0, review_1.processIncrementalDiff)(incrementalDiff);
+        if (!incrementalResult.shouldReview) {
+            core.info(incrementalResult.message || 'No new changes to review');
+            return {
+                comments: [],
+                tokens: { input: 0, output: 0 },
+                fileChanges: incrementalDiff.changedFiles,
+                incrementalMessage: incrementalResult.message
+            };
+        }
+        const incrementalMessage = incrementalResult.message;
+        core.info(incrementalMessage || 'Processing incremental review');
+        // Always get repository context (simplified approach)
+        let repositoryContext;
+        try {
+            repositoryContext = await (0, github_api_1.getRepositoryContext)(this.octokit, this.context, pr);
+            core.info(`📁 Repository context gathered: ${repositoryContext.structure.totalFiles} files`);
+        }
+        catch (error) {
+            core.warning(`Failed to get repository context: ${error}`);
+            // Continue with basic diff review if context fails
+        }
+        // Always create chunks with contextual content (±100 lines strategy)
+        const chunks = await (0, review_1.chunkDiff)(incrementalDiff.changedFiles, this.config, repositoryContext, this.octokit, this.context, pr.head.sha);
         logger_1.Logger.chunksCreated(chunks.length);
         if (chunks.length === 0) {
             logger_1.Logger.noFilesToReview();
-            return { comments: [], tokens: { input: 0, output: 0 }, fileChanges: diff };
+            return {
+                comments: [],
+                tokens: { input: 0, output: 0 },
+                fileChanges: incrementalDiff.changedFiles,
+                incrementalMessage
+            };
         }
         logger_1.Logger.reviewStart();
         let allComments = [];
@@ -96,7 +160,7 @@ class ReviewWorkflow {
         for (let i = 0; i < chunks.length; i++) {
             const chunk = chunks[i];
             const chunkNumber = i + 1;
-            logger_1.Logger.chunkReview(chunkNumber, chunks.length, chunk.content.length, chunk.files);
+            logger_1.Logger.chunkReview(chunkNumber, chunks.length, chunk.content.length, chunk.fileChanges.map(f => f.filename));
             logger_1.Logger.aiProviderCall(chunkNumber, this.inputs.aiProvider, this.inputs.model);
             const startTime = Date.now();
             const { comments, tokens } = await (0, ai_review_1.reviewChunk)(chunk, this.config, this.inputs.aiProvider, this.inputs.apiKey, this.inputs.model);
@@ -106,10 +170,26 @@ class ReviewWorkflow {
             allComments = allComments.concat(comments);
             totalTokens = (0, cost_1.accumulateTokens)(totalTokens, tokens);
         }
+        // Always save review state for incremental reviews
+        if (incrementalDiff.newCommits.length > 0) {
+            const newReviewState = {
+                prNumber: this.context.payload.pull_request?.number || 0,
+                lastReviewedSha: pr.head.sha,
+                reviewedCommits: incrementalDiff.newCommits,
+                timestamp: new Date().toISOString()
+            };
+            await (0, github_api_1.saveReviewState)(this.octokit, this.context, pr, newReviewState);
+            core.info(`💾 Review state saved for commit: ${pr.head.sha.substring(0, 7)}`);
+        }
         logger_1.Logger.totalResults(allComments.length, totalTokens.input, totalTokens.output);
-        return { comments: allComments, tokens: totalTokens, fileChanges: diff };
+        return {
+            comments: allComments,
+            tokens: totalTokens,
+            fileChanges: incrementalDiff.changedFiles,
+            incrementalMessage
+        };
     }
-    async processAndPostComments(allComments, totalTokens, modifiedFiles, pr, triggeringUser, fileChanges) {
+    async processAndPostComments(allComments, totalTokens, modifiedFiles, pr, triggeringUser, fileChanges, incrementalMessage) {
         logger_1.Logger.commentProcessing();
         // Log severity breakdown
         const severityCounts = allComments.reduce((acc, comment) => {
@@ -120,7 +200,7 @@ class ReviewWorkflow {
         const finalComments = (0, review_1.processComments)(allComments, this.config);
         logger_1.Logger.finalComments(finalComments.length, allComments.length);
         if (finalComments.length !== allComments.length) {
-            logger_1.Logger.filteringReasons(this.config.max_comments, this.config.prioritize_by_severity);
+            logger_1.Logger.filteringReasons(this.config.max_comments);
         }
         // Prepare PR information for summary
         const prInfo = {
@@ -131,7 +211,11 @@ class ReviewWorkflow {
             additions: pr.additions || 0,
             deletions: pr.deletions || 0
         };
-        const reviewBody = (0, github_1.formatReviewBody)(this.inputs.model, totalTokens, finalComments.length, prInfo);
+        let reviewBody = (0, github_1.formatReviewBody)(this.inputs.model, totalTokens, finalComments.length, prInfo);
+        // Prepend incremental message if available
+        if (incrementalMessage) {
+            reviewBody = `${incrementalMessage}\n\n${reviewBody}`;
+        }
         if (finalComments.length > 0) {
             logger_1.Logger.postingReview(reviewBody.length, finalComments.length);
             const postStartTime = Date.now();

@@ -1,11 +1,12 @@
+import * as core from '@actions/core';
 import * as github from '@actions/github';
-import { ActionInputs, ReviewConfig, TokenUsage, ReviewComment, PullRequest, User, FileChange } from '../types';
+import { ActionInputs, ReviewConfig, TokenUsage, ReviewComment, PullRequest, User, FileChange, ReviewState, RepositoryContext } from '../types';
 import { validateInputs, validateConfig, validateAndThrow } from '../validation';
 import { validateSecurity } from '../domains/security';
-import { chunkDiff, processComments } from '../domains/review';
+import { chunkDiff, processComments, processIncrementalDiff } from '../domains/review';
 import { calculateCost, accumulateTokens } from '../domains/cost';
 import { formatReviewBody } from '../domains/github';
-import { getPRDiff, postReview, checkUserPermissions } from '../effects/github-api';
+import { getPRDiff, postReview, checkUserPermissions, getReviewState, saveReviewState, getIncrementalDiff, getRepositoryContext } from '../effects/github-api';
 import { reviewChunk } from './ai-review';
 import { Logger } from './logger';
 
@@ -137,22 +138,68 @@ export class ReviewWorkflow {
     Logger.userPermissionsPassed();
   }
 
-  async processAndReviewDiff(): Promise<{ comments: ReviewComment[]; tokens: TokenUsage; fileChanges: FileChange[] }> {
+  async processAndReviewDiff(): Promise<{ comments: ReviewComment[]; tokens: TokenUsage; fileChanges: FileChange[]; incrementalMessage?: string }> {
     Logger.diffProcessing();
     
     const pr = this.context.payload.pull_request as PullRequest;
     if (!pr) {
       throw new Error('Pull request not found in context');
     }
+
+    // Always handle incremental reviews (simplified approach)
+    const reviewState = await getReviewState(this.octokit, this.context, pr);
+    const incrementalDiff = await getIncrementalDiff(
+      this.octokit, 
+      this.context, 
+      pr, 
+      reviewState?.lastReviewedSha
+    );
     
-    const diff = await getPRDiff(this.octokit, this.context, pr);
-    const chunks = chunkDiff(diff, this.config);
+    const incrementalResult = processIncrementalDiff(incrementalDiff);
+    
+    if (!incrementalResult.shouldReview) {
+      core.info(incrementalResult.message || 'No new changes to review');
+      return { 
+        comments: [], 
+        tokens: { input: 0, output: 0 }, 
+        fileChanges: incrementalDiff.changedFiles,
+        incrementalMessage: incrementalResult.message
+      };
+    }
+    
+    const incrementalMessage = incrementalResult.message;
+    core.info(incrementalMessage || 'Processing incremental review');
+    
+    // Always get repository context (simplified approach)
+    let repositoryContext: RepositoryContext | undefined;
+    try {
+      repositoryContext = await getRepositoryContext(this.octokit, this.context, pr);
+      core.info(`📁 Repository context gathered: ${repositoryContext.structure.totalFiles} files`);
+    } catch (error) {
+      core.warning(`Failed to get repository context: ${error}`);
+      // Continue with basic diff review if context fails
+    }
+    
+    // Always create chunks with contextual content (±100 lines strategy)
+    const chunks = await chunkDiff(
+      incrementalDiff.changedFiles,
+      this.config,
+      repositoryContext,
+      this.octokit,
+      this.context,
+      pr.head.sha
+    );
     
     Logger.chunksCreated(chunks.length);
 
     if (chunks.length === 0) {
       Logger.noFilesToReview();
-      return { comments: [], tokens: { input: 0, output: 0 }, fileChanges: diff };
+      return { 
+        comments: [], 
+        tokens: { input: 0, output: 0 }, 
+        fileChanges: incrementalDiff.changedFiles,
+        incrementalMessage
+      };
     }
 
     Logger.reviewStart();
@@ -164,7 +211,7 @@ export class ReviewWorkflow {
       const chunk = chunks[i];
       const chunkNumber = i + 1;
       
-      Logger.chunkReview(chunkNumber, chunks.length, chunk.content.length, chunk.files);
+      Logger.chunkReview(chunkNumber, chunks.length, chunk.content.length, chunk.fileChanges.map(f => f.filename));
       Logger.aiProviderCall(chunkNumber, this.inputs.aiProvider, this.inputs.model);
       
       const startTime = Date.now();
@@ -184,8 +231,26 @@ export class ReviewWorkflow {
       totalTokens = accumulateTokens(totalTokens, tokens);
     }
 
+    // Always save review state for incremental reviews
+    if (incrementalDiff.newCommits.length > 0) {
+      const newReviewState: ReviewState = {
+        prNumber: this.context.payload.pull_request?.number || 0,
+        lastReviewedSha: pr.head.sha,
+        reviewedCommits: incrementalDiff.newCommits,
+        timestamp: new Date().toISOString()
+      };
+      
+      await saveReviewState(this.octokit, this.context, pr, newReviewState);
+      core.info(`💾 Review state saved for commit: ${pr.head.sha.substring(0, 7)}`);
+    }
+
     Logger.totalResults(allComments.length, totalTokens.input, totalTokens.output);
-    return { comments: allComments, tokens: totalTokens, fileChanges: diff };
+    return { 
+      comments: allComments, 
+      tokens: totalTokens, 
+      fileChanges: incrementalDiff.changedFiles,
+      incrementalMessage
+    };
   }
 
   async processAndPostComments(
@@ -194,7 +259,8 @@ export class ReviewWorkflow {
     modifiedFiles: string[],
     pr: PullRequest,
     triggeringUser: User,
-    fileChanges: FileChange[]
+    fileChanges: FileChange[],
+    incrementalMessage?: string
   ): Promise<void> {
     Logger.commentProcessing();
     
@@ -209,7 +275,7 @@ export class ReviewWorkflow {
     Logger.finalComments(finalComments.length, allComments.length);
     
     if (finalComments.length !== allComments.length) {
-      Logger.filteringReasons(this.config.max_comments, this.config.prioritize_by_severity);
+      Logger.filteringReasons(this.config.max_comments);
     }
 
     // Prepare PR information for summary
@@ -222,12 +288,17 @@ export class ReviewWorkflow {
       deletions: pr.deletions || 0
     };
 
-    const reviewBody = formatReviewBody(
+    let reviewBody = formatReviewBody(
       this.inputs.model,
       totalTokens,
       finalComments.length,
       prInfo
     );
+    
+    // Prepend incremental message if available
+    if (incrementalMessage) {
+      reviewBody = `${incrementalMessage}\n\n${reviewBody}`;
+    }
 
     if (finalComments.length > 0) {
       Logger.postingReview(reviewBody.length, finalComments.length);

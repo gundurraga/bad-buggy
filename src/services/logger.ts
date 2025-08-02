@@ -24,8 +24,8 @@ export class Logger {
     core.info(`📄 Loading configuration from ${configFile}...`);
   }
 
-  static configLoaded(maxComments: number, prioritizeBySeverity: boolean): void {
-    core.info(`✅ Configuration loaded: max_comments=${maxComments}, prioritize_by_severity=${prioritizeBySeverity}`);
+  static configLoaded(maxComments: number): void {
+    core.info(`✅ Configuration loaded: max_comments=${maxComments}`);
   }
 
   static configValidation(): void {
@@ -129,10 +129,10 @@ export class Logger {
     core.info(`✨ Final comments after processing: ${finalCount} (filtered from ${originalCount})`);
   }
 
-  static filteringReasons(maxComments: number, prioritizeBySeverity: boolean): void {
+  static filteringReasons(maxComments: number): void {
     core.info('🔽 Comments filtered due to:');
     core.info(`  - Max comments limit: ${maxComments}`);
-    core.info(`  - Severity prioritization: ${prioritizeBySeverity}`);
+    core.info(`  - Severity prioritization: enabled (always)`);
   }
 
   static postingReview(summaryLength: number, commentCount: number): void {

@@ -19,15 +19,7 @@ export const validateConfig = (config: ReviewConfig): ValidationResult => {
     warnings.push('max_comments is high and may cause API rate limits');
   }
 
-  // Validate prioritize_by_severity
-  if (typeof config.prioritize_by_severity !== 'boolean') {
-    errors.push('prioritize_by_severity must be a boolean');
-  }
-
   // Validate arrays
-  if (!Array.isArray(config.review_aspects)) {
-    errors.push('review_aspects must be an array');
-  }
   if (!Array.isArray(config.ignore_patterns)) {
     errors.push('ignore_patterns must be an array');
   }

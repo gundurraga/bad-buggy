@@ -75,26 +75,28 @@ Plus individual comments on specific lines of your code pointing out issues and 
 Create `.github/ai-review-config.yml` to customize:
 
 ```yaml
-# Custom review instructions
-review_prompt: |
-  Focus on security, performance, and best practices.
-  Be constructive and helpful.
-
-# Limit comments per review
+# Maximum comments per review
 max_comments: 10
-
-# What to review
-review_aspects:
-  - security_vulnerabilities
-  - performance_issues
-  - bugs
-  - best_practices
 
 # Files to ignore
 ignore_patterns:
   - "*.md"
   - "tests/*"
+  - "*.lock"
+  - "dist/**"
+
+# Custom instructions (appended to default prompt)
+custom_prompt: |
+  Focus on security, performance, and best practices.
+  Be constructive and helpful.
 ```
+
+### Always Enabled Features
+
+- ✅ **Incremental reviews** - Only reviews new changes since last review
+- ✅ **Smart context** - Provides ~100 lines around each change for better understanding
+- ✅ **Repository structure** - AI understands your project layout
+- ✅ **Cost optimization** - Efficient chunking and context management
 
 ## Supported Providers
 

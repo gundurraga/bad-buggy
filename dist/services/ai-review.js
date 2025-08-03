@@ -179,8 +179,8 @@ const parseAIResponse = (responseContent) => {
     return comments;
 };
 exports.parseAIResponse = parseAIResponse;
-// Effect: Review a single chunk with repository context
-const reviewChunk = async (chunk, config, provider, apiKey, model) => {
+// Effect: Review a single chunk with repository context using secure credential management
+const reviewChunk = async (chunk, config, provider, model) => {
     // Always use repository context if available (simplified approach)
     const prompt = (0, exports.buildReviewPrompt)(config, chunk.content, chunk.repositoryContext);
     core.info(`🔗 Calling AI provider: ${provider} with model: ${model}`);
@@ -192,10 +192,10 @@ const reviewChunk = async (chunk, config, provider, apiKey, model) => {
         const fileCount = Object.keys(chunk.contextualContent).length;
         core.info(`📄 Including contextual content for ${fileCount} files`);
     }
-    // Pre-request token estimation using provider-specific token counter
+    // Pre-request token estimation using provider-specific token counter with secure credentials
     let estimatedInputTokens = 0;
     try {
-        const tokenCounter = token_counter_1.TokenCounterFactory.create(provider, apiKey);
+        const tokenCounter = token_counter_1.TokenCounterFactory.create(provider);
         const tokenResult = await tokenCounter.countTokens(prompt, model);
         estimatedInputTokens = tokenResult.tokens;
         core.info(`🔢 Estimated input tokens: ${estimatedInputTokens}`);
@@ -204,7 +204,7 @@ const reviewChunk = async (chunk, config, provider, apiKey, model) => {
         core.warning(`Failed to get accurate token count, using fallback: ${error}`);
         estimatedInputTokens = (0, review_1.countTokens)(prompt, model);
     }
-    const response = await (0, ai_api_1.callAIProvider)(provider, prompt, apiKey, model);
+    const response = await (0, ai_api_1.callAIProvider)(provider, prompt, model);
     core.info(`🤖 AI Response received: ${response.content.length} characters`);
     core.info(`📊 AI Response preview: "${response.content.substring(0, 200)}${response.content.length > 200 ? "..." : ""}"`);
     // Log enhanced usage information if available

@@ -1,11 +1,13 @@
 import { AIProviderResponse, AIProviderError } from "../types";
+import { CredentialManager } from "../security/credential-manager";
 
 // Effect: Call Anthropic API
 export const callAnthropic = async (
   prompt: string,
-  apiKey: string,
   model: string
 ): Promise<AIProviderResponse> => {
+  const credentialManager = CredentialManager.getInstance();
+  const apiKey = credentialManager.getApiKey('anthropic');
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -41,9 +43,10 @@ export const callAnthropic = async (
 // Effect: Call OpenRouter API
 export const callOpenRouter = async (
   prompt: string,
-  apiKey: string,
   model: string
 ): Promise<AIProviderResponse> => {
+  const credentialManager = CredentialManager.getInstance();
+  const apiKey = credentialManager.getApiKey('openrouter');
   const response = await fetch(
     "https://openrouter.ai/api/v1/chat/completions",
     {
@@ -113,15 +116,14 @@ export const callOpenRouter = async (
 export const callAIProvider = async (
   provider: "anthropic" | "openrouter",
   prompt: string,
-  apiKey: string,
   model: string
 ): Promise<AIProviderResponse> => {
   try {
     switch (provider) {
       case "anthropic":
-        return await callAnthropic(prompt, apiKey, model);
+        return await callAnthropic(prompt, model);
       case "openrouter":
-        return await callOpenRouter(prompt, apiKey, model);
+        return await callOpenRouter(prompt, model);
       default:
         throw new AIProviderError(`Unsupported AI provider: ${provider}`);
     }

@@ -1,5 +1,11 @@
 import * as core from "@actions/core";
-import { ReviewConfig, ReviewComment, TokenUsage, DiffChunk, RepositoryContext } from "../types";
+import {
+  ReviewConfig,
+  ReviewComment,
+  TokenUsage,
+  DiffChunk,
+  RepositoryContext,
+} from "../types";
 import { callAIProvider } from "../effects/ai-api";
 import { countTokens } from "../domains/review";
 import { TokenCounterFactory } from "./token-counter";
@@ -192,12 +198,11 @@ export const parseAIResponse = (responseContent: string): ReviewComment[] => {
   return comments;
 };
 
-// Effect: Review a single chunk with repository context
+// Effect: Review a single chunk with repository context using secure credential management
 export const reviewChunk = async (
   chunk: DiffChunk,
   config: ReviewConfig,
   provider: "anthropic" | "openrouter",
-  apiKey: string,
   model: string
 ): Promise<{ comments: ReviewComment[]; tokens: TokenUsage }> => {
   // Always use repository context if available (simplified approach)
@@ -217,10 +222,10 @@ export const reviewChunk = async (
     core.info(`📄 Including contextual content for ${fileCount} files`);
   }
 
-  // Pre-request token estimation using provider-specific token counter
+  // Pre-request token estimation using provider-specific token counter with secure credentials
   let estimatedInputTokens = 0;
   try {
-    const tokenCounter = TokenCounterFactory.create(provider, apiKey);
+    const tokenCounter = TokenCounterFactory.create(provider);
     const tokenResult = await tokenCounter.countTokens(prompt, model);
     estimatedInputTokens = tokenResult.tokens;
     core.info(`🔢 Estimated input tokens: ${estimatedInputTokens}`);
@@ -231,7 +236,7 @@ export const reviewChunk = async (
     estimatedInputTokens = countTokens(prompt, model);
   }
 
-  const response = await callAIProvider(provider, prompt, apiKey, model);
+  const response = await callAIProvider(provider, prompt, model);
 
   core.info(`🤖 AI Response received: ${response.content.length} characters`);
   core.info(

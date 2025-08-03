@@ -7,16 +7,16 @@ export interface TokenCounter {
     countTokens(text: string, model: string): Promise<TokenCountResult>;
 }
 export declare class AnthropicTokenCounter implements TokenCounter {
-    private apiKey;
-    constructor(apiKey: string);
+    private credentialManager;
+    constructor();
     countTokens(text: string, model: string): Promise<TokenCountResult>;
 }
 export declare class OpenRouterTokenCounter implements TokenCounter {
-    private apiKey;
-    constructor(apiKey: string);
+    private credentialManager;
+    constructor();
     countTokens(text: string, model: string): Promise<TokenCountResult>;
 }
 export declare class TokenCounterFactory {
-    static create(provider: 'anthropic' | 'openrouter', apiKey: string): TokenCounter;
+    static create(provider: 'anthropic' | 'openrouter'): TokenCounter;
 }
 //# sourceMappingURL=token-counter.d.ts.map

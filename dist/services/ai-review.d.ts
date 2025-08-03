@@ -4,7 +4,7 @@ import { ReviewConfig, ReviewComment, TokenUsage, DiffChunk, RepositoryContext }
  */
 export declare const buildReviewPrompt: (config: ReviewConfig, chunkContent: string, repositoryContext?: RepositoryContext) => string;
 export declare const parseAIResponse: (responseContent: string) => ReviewComment[];
-export declare const reviewChunk: (chunk: DiffChunk, config: ReviewConfig, provider: "anthropic" | "openrouter", apiKey: string, model: string) => Promise<{
+export declare const reviewChunk: (chunk: DiffChunk, config: ReviewConfig, provider: "anthropic" | "openrouter", model: string) => Promise<{
     comments: ReviewComment[];
     tokens: TokenUsage;
 }>;

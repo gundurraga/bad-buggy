@@ -25,11 +25,11 @@ export interface PricingCache {
     };
 }
 export declare class PricingService {
-    private apiKey;
     private provider;
     private cache;
     private readonly CACHE_TTL;
-    constructor(apiKey: string, provider: "anthropic" | "openrouter");
+    private credentialManager;
+    constructor(provider: "anthropic" | "openrouter");
     getModelPricing(model: string): Promise<ModelPricing>;
     private fetchAnthropicPricing;
     private fetchOpenRouterPricing;
@@ -38,7 +38,7 @@ export declare class PricingService {
     clearExpiredCache(): void;
 }
 export declare class PricingServiceFactory {
-    static create(provider: "anthropic" | "openrouter", apiKey: string): PricingService;
+    static create(provider: "anthropic" | "openrouter"): PricingService;
 }
 export {};
 //# sourceMappingURL=pricing-service.d.ts.map

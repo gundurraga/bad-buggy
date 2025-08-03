@@ -1,14 +1,13 @@
 import { CostCalculation, TokenUsage } from "../types";
 import { PricingServiceFactory } from "../services/pricing-service";
 
-// New dynamic function: Calculate cost using PricingService
+// New dynamic function: Calculate cost using PricingService with secure credential management
 export const calculateCost = async (
   usage: TokenUsage,
   model: string,
-  provider: 'anthropic' | 'openrouter',
-  apiKey: string
+  provider: "anthropic" | "openrouter"
 ): Promise<CostCalculation> => {
-  const pricingService = PricingServiceFactory.create(provider, apiKey);
+  const pricingService = PricingServiceFactory.create(provider);
   const cost = await pricingService.calculateCost(usage, model);
   return {
     inputCost: cost.inputCost,
@@ -18,10 +17,13 @@ export const calculateCost = async (
 };
 
 // Pure function to accumulate token usage
-export const accumulateTokens = (existing: TokenUsage, additional: TokenUsage): TokenUsage => {
+export const accumulateTokens = (
+  existing: TokenUsage,
+  additional: TokenUsage
+): TokenUsage => {
   return {
     input: existing.input + additional.input,
-    output: existing.output + additional.output
+    output: existing.output + additional.output,
   };
 };
 

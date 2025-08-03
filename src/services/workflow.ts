@@ -219,7 +219,6 @@ export class ReviewWorkflow {
         chunk,
         this.config,
         this.inputs.aiProvider,
-        this.inputs.apiKey,
         this.inputs.model
       );
       const duration = Date.now() - startTime;
@@ -330,12 +329,11 @@ export class ReviewWorkflow {
     Logger.costCalculation();
     
     try {
-      // Use dynamic cost calculation with real-time pricing
+      // Use dynamic cost calculation with real-time pricing and secure credential management
       const cost = await calculateCost(
         totalTokens,
         this.inputs.model,
-        this.inputs.aiProvider,
-        this.inputs.apiKey
+        this.inputs.aiProvider
       );
       Logger.costSummary(cost.totalCost, cost.inputCost, cost.outputCost);
       Logger.costBreakdown(totalTokens, cost.inputCost, cost.outputCost, cost.totalCost);

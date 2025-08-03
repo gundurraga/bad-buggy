@@ -2,21 +2,20 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TokenCounterFactory = exports.OpenRouterTokenCounter = exports.AnthropicTokenCounter = void 0;
 const types_1 = require("../types");
+const credential_manager_1 = require("../security/credential-manager");
 // Anthropic Token Counter using their Token Counting API
 class AnthropicTokenCounter {
-    constructor(apiKey) {
-        this.apiKey = apiKey;
+    constructor() {
+        this.credentialManager = credential_manager_1.CredentialManager.getInstance();
     }
     async countTokens(text, model) {
-        if (!this.apiKey) {
-            throw new types_1.AIProviderError('Anthropic API key is required for token counting');
-        }
+        const apiKey = this.credentialManager.getApiKey('anthropic');
         try {
             const response = await fetch('https://api.anthropic.com/v1/messages/count_tokens', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'x-api-key': this.apiKey,
+                    'x-api-key': apiKey,
                     'anthropic-version': '2023-06-01',
                 },
                 body: JSON.stringify({
@@ -45,20 +44,18 @@ class AnthropicTokenCounter {
 exports.AnthropicTokenCounter = AnthropicTokenCounter;
 // OpenRouter Token Counter using minimal completion requests
 class OpenRouterTokenCounter {
-    constructor(apiKey) {
-        this.apiKey = apiKey;
+    constructor() {
+        this.credentialManager = credential_manager_1.CredentialManager.getInstance();
     }
     async countTokens(text, model) {
-        if (!this.apiKey) {
-            throw new types_1.AIProviderError('OpenRouter API key is required for token counting');
-        }
+        const apiKey = this.credentialManager.getApiKey('openrouter');
         try {
             // Use a minimal completion request to get token count
             const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${this.apiKey}`,
+                    'Authorization': `Bearer ${apiKey}`,
                     'HTTP-Referer': 'https://github.com/gundurraga/bad-buggy',
                     'X-Title': 'Bad Buggy Code Reviewer',
                 },
@@ -90,14 +87,19 @@ class OpenRouterTokenCounter {
     }
 }
 exports.OpenRouterTokenCounter = OpenRouterTokenCounter;
-// Token Counter Factory
+// Token Counter Factory with secure credential management
 class TokenCounterFactory {
-    static create(provider, apiKey) {
+    static create(provider) {
+        // Validate that credentials exist before creating the counter
+        const credentialManager = credential_manager_1.CredentialManager.getInstance();
+        if (!credentialManager.hasApiKey(provider)) {
+            throw new types_1.AIProviderError(`API key not found for provider: ${provider}`);
+        }
         switch (provider) {
             case 'anthropic':
-                return new AnthropicTokenCounter(apiKey);
+                return new AnthropicTokenCounter();
             case 'openrouter':
-                return new OpenRouterTokenCounter(apiKey);
+                return new OpenRouterTokenCounter();
             default:
                 throw new types_1.AIProviderError(`Unsupported provider for token counting: ${provider}`);
         }

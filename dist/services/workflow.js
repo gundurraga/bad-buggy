@@ -163,7 +163,7 @@ class ReviewWorkflow {
             logger_1.Logger.chunkReview(chunkNumber, chunks.length, chunk.content.length, chunk.fileChanges.map(f => f.filename));
             logger_1.Logger.aiProviderCall(chunkNumber, this.inputs.aiProvider, this.inputs.model);
             const startTime = Date.now();
-            const { comments, tokens } = await (0, ai_review_1.reviewChunk)(chunk, this.config, this.inputs.aiProvider, this.inputs.apiKey, this.inputs.model);
+            const { comments, tokens } = await (0, ai_review_1.reviewChunk)(chunk, this.config, this.inputs.aiProvider, this.inputs.model);
             const duration = Date.now() - startTime;
             logger_1.Logger.chunkResults(chunkNumber, comments.length, tokens.input, tokens.output, duration);
             logger_1.Logger.chunkIssues(chunkNumber, comments);
@@ -234,8 +234,8 @@ class ReviewWorkflow {
     async reportCosts(totalTokens) {
         logger_1.Logger.costCalculation();
         try {
-            // Use dynamic cost calculation with real-time pricing
-            const cost = await (0, cost_1.calculateCost)(totalTokens, this.inputs.model, this.inputs.aiProvider, this.inputs.apiKey);
+            // Use dynamic cost calculation with real-time pricing and secure credential management
+            const cost = await (0, cost_1.calculateCost)(totalTokens, this.inputs.model, this.inputs.aiProvider);
             logger_1.Logger.costSummary(cost.totalCost, cost.inputCost, cost.outputCost);
             logger_1.Logger.costBreakdown(totalTokens, cost.inputCost, cost.outputCost, cost.totalCost);
         }

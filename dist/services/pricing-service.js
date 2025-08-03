@@ -2,13 +2,14 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PricingServiceFactory = exports.PricingService = void 0;
 const types_1 = require("../types");
+const credential_manager_1 = require("../security/credential-manager");
 // Pricing Service for dynamic pricing and cost calculation
 class PricingService {
-    constructor(apiKey, provider) {
-        this.apiKey = apiKey;
+    constructor(provider) {
         this.provider = provider;
         this.cache = {};
         this.CACHE_TTL = 3600000; // 1 hour in milliseconds
+        this.credentialManager = credential_manager_1.CredentialManager.getInstance();
     }
     // Get model pricing with caching
     async getModelPricing(model) {
@@ -45,10 +46,11 @@ class PricingService {
     // Fetch Anthropic model pricing
     async fetchAnthropicPricing(model) {
         try {
+            const apiKey = this.credentialManager.getApiKey('anthropic');
             // Try to get pricing from Anthropic's models API
             const response = await fetch("https://api.anthropic.com/v1/models", {
                 headers: {
-                    "x-api-key": this.apiKey,
+                    "x-api-key": apiKey,
                     "anthropic-version": "2023-06-01",
                 },
             });
@@ -84,9 +86,10 @@ class PricingService {
     // Fetch OpenRouter model pricing
     async fetchOpenRouterPricing(model) {
         try {
+            const apiKey = this.credentialManager.getApiKey('openrouter');
             const response = await fetch("https://openrouter.ai/api/v1/models", {
                 headers: {
-                    Authorization: `Bearer ${this.apiKey}`,
+                    Authorization: `Bearer ${apiKey}`,
                 },
             });
             if (!response.ok) {
@@ -157,8 +160,13 @@ class PricingService {
 exports.PricingService = PricingService;
 // Factory for creating pricing services
 class PricingServiceFactory {
-    static create(provider, apiKey) {
-        return new PricingService(apiKey, provider);
+    static create(provider) {
+        // Validate that credentials exist before creating the service
+        const credentialManager = credential_manager_1.CredentialManager.getInstance();
+        if (!credentialManager.hasApiKey(provider)) {
+            throw new types_1.AIProviderError(`API key not found for provider: ${provider}`);
+        }
+        return new PricingService(provider);
     }
 }
 exports.PricingServiceFactory = PricingServiceFactory;

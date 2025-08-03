@@ -3,6 +3,7 @@ import {
   CostCalculation,
   TokenUsage,
 } from "../types";
+import { CredentialManager } from "../security/credential-manager";
 
 // Internal pricing interface for service calculations
 interface ModelPricing {
@@ -64,11 +65,11 @@ export interface PricingCache {
 export class PricingService {
   private cache: PricingCache = {};
   private readonly CACHE_TTL = 3600000; // 1 hour in milliseconds
+  private credentialManager: CredentialManager;
 
-  constructor(
-    private apiKey: string,
-    private provider: "anthropic" | "openrouter"
-  ) {}
+  constructor(private provider: "anthropic" | "openrouter") {
+    this.credentialManager = CredentialManager.getInstance();
+  }
 
   // Get model pricing with caching
   async getModelPricing(model: string): Promise<ModelPricing> {
@@ -109,10 +110,11 @@ export class PricingService {
   // Fetch Anthropic model pricing
   private async fetchAnthropicPricing(model: string): Promise<ModelPricing> {
     try {
+      const apiKey = this.credentialManager.getApiKey('anthropic');
       // Try to get pricing from Anthropic's models API
       const response = await fetch("https://api.anthropic.com/v1/models", {
         headers: {
-          "x-api-key": this.apiKey,
+          "x-api-key": apiKey,
           "anthropic-version": "2023-06-01",
         },
       });
@@ -154,9 +156,10 @@ export class PricingService {
   // Fetch OpenRouter model pricing
   private async fetchOpenRouterPricing(model: string): Promise<ModelPricing> {
     try {
+      const apiKey = this.credentialManager.getApiKey('openrouter');
       const response = await fetch("https://openrouter.ai/api/v1/models", {
         headers: {
-          Authorization: `Bearer ${this.apiKey}`,
+          Authorization: `Bearer ${apiKey}`,
         },
       });
 
@@ -254,10 +257,12 @@ export class PricingService {
 
 // Factory for creating pricing services
 export class PricingServiceFactory {
-  static create(
-    provider: "anthropic" | "openrouter",
-    apiKey: string
-  ): PricingService {
-    return new PricingService(apiKey, provider);
+  static create(provider: "anthropic" | "openrouter"): PricingService {
+    // Validate that credentials exist before creating the service
+    const credentialManager = CredentialManager.getInstance();
+    if (!credentialManager.hasApiKey(provider)) {
+      throw new AIProviderError(`API key not found for provider: ${provider}`);
+    }
+    return new PricingService(provider);
   }
 }

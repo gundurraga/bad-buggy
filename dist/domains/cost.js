@@ -2,9 +2,9 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.formatCost = exports.accumulateTokens = exports.calculateCost = void 0;
 const pricing_service_1 = require("../services/pricing-service");
-// New dynamic function: Calculate cost using PricingService
-const calculateCost = async (usage, model, provider, apiKey) => {
-    const pricingService = pricing_service_1.PricingServiceFactory.create(provider, apiKey);
+// New dynamic function: Calculate cost using PricingService with secure credential management
+const calculateCost = async (usage, model, provider) => {
+    const pricingService = pricing_service_1.PricingServiceFactory.create(provider);
     const cost = await pricingService.calculateCost(usage, model);
     return {
         inputCost: cost.inputCost,
@@ -17,7 +17,7 @@ exports.calculateCost = calculateCost;
 const accumulateTokens = (existing, additional) => {
     return {
         input: existing.input + additional.input,
-        output: existing.output + additional.output
+        output: existing.output + additional.output,
     };
 };
 exports.accumulateTokens = accumulateTokens;

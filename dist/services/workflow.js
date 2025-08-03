@@ -191,12 +191,8 @@ class ReviewWorkflow {
     }
     async processAndPostComments(allComments, totalTokens, modifiedFiles, pr, triggeringUser, fileChanges, incrementalMessage) {
         logger_1.Logger.commentProcessing();
-        // Log severity breakdown
-        const severityCounts = allComments.reduce((acc, comment) => {
-            acc[comment.severity] = (acc[comment.severity] || 0) + 1;
-            return acc;
-        }, {});
-        logger_1.Logger.severityBreakdown(severityCounts);
+        // Log comment count
+        core.info(`Total comments generated: ${allComments.length}`);
         const finalComments = (0, review_1.processComments)(allComments, this.config);
         logger_1.Logger.finalComments(finalComments.length, allComments.length);
         if (finalComments.length !== allComments.length) {

@@ -8,5 +8,5 @@ export declare const processIncrementalDiff: (incrementalDiff: IncrementalDiff, 
     shouldReview: boolean;
     message?: string;
 };
-export declare const processComments: (comments: ReviewComment[], config: ReviewConfig) => ReviewComment[];
+export declare const processComments: (comments: ReviewComment[], _config: ReviewConfig) => ReviewComment[];
 //# sourceMappingURL=review.d.ts.map

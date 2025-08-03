@@ -70,26 +70,76 @@ Tokens: 7,858 input, 1,556 output
 
 Plus individual comments on specific lines of your code pointing out issues and suggestions.
 
+## Thoughtful Code Review Approach
+
+Bad Buggy provides comprehensive, educational code reviews that help developers grow. Here's what makes it different:
+
+### 🎯 **Focused & Impactful**
+- **Maximum 3 comments per review** - Quality over quantity
+- **Teaches while reviewing** - Explains the "why" behind suggestions
+- **Prioritizes architectural thinking** - Focuses on design patterns, maintainability, and long-term impact
+- **Rich markdown formatting** - Uses code blocks, headers, and formatting for clarity
+- **Comprehensive explanations** - Comments are as long as needed to fully teach the concept
+
+### 🧠 **What It Looks For**
+- **Code design and architecture** - Is this the right approach?
+- **Potential bugs and edge cases** - What could go wrong?
+- **Performance implications** - Will this scale?
+- **Security considerations** - Are there vulnerabilities?
+- **Maintainability** - Will future developers understand this?
+- **Best practices** - Industry standards and proven patterns
+
+### 💡 **Review Philosophy**
+- **Constructive and motivational** - Builds up developers, doesn't tear down
+- **Context-aware** - Understands your project structure and patterns
+- **Educational** - Each comment is a comprehensive learning opportunity
+- **Practical** - Provides actionable suggestions with detailed explanations
+
 ## Configuration (Optional)
 
-Create `.github/ai-review-config.yml` to customize:
+Create `.github/ai-review-config.yml` to customize the review for your specific project:
 
 ```yaml
-# Maximum comments per review
-max_comments: 10
+# Maximum comments per review (recommended: 3 for focused feedback)
+max_comments: 3
 
 # Files to ignore
 ignore_patterns:
   - "*.md"
-  - "tests/*"
+  - "tests/*"  # Add if you don't want test reviews
   - "*.lock"
   - "dist/**"
 
-# Custom instructions (appended to default prompt)
+# Project-specific context and standards
 custom_prompt: |
-  Focus on security, performance, and best practices.
-  Be constructive and helpful.
+  ## Project Context
+  This is a React TypeScript e-commerce application with Node.js backend.
+  
+  ## Architecture Standards
+  We follow Clean Architecture with Domain-Driven Design principles.
+  
+  ## Technology Requirements
+  - React components should use hooks and functional patterns
+  - All API endpoints must include proper OpenAPI documentation
+  - Database queries should use Prisma with proper typing
+  
+  ## Security Standards
+  - All user inputs must be validated and sanitized
+  - PCI compliance required for payment processing code
 ```
+
+### 📝 **Writing Effective Custom Prompts**
+
+The custom prompt should provide context that helps the AI understand your specific project needs. Use the template in `.github/ai-review-config-example.yml` and fill in sections relevant to your project:
+
+- **Project Context**: What type of application, tech stack, domain
+- **Architecture Standards**: Patterns and principles your team follows
+- **Technology Requirements**: Framework-specific best practices
+- **Security Standards**: Domain-specific security requirements
+- **Performance Standards**: Your performance expectations
+- **Business Domain**: Industry-specific considerations
+
+The more context you provide, the more targeted and valuable the reviews become.
 
 ### Always Enabled Features
 

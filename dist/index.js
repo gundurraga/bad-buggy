@@ -38,27 +38,63 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.DEFAULT_CONFIG = void 0;
 // Default configuration for Bad Buggy code review
 exports.DEFAULT_CONFIG = {
-    review_prompt: `You are an expert code reviewer. Please review the following code changes and provide constructive feedback.
+    review_prompt: `You are an experienced code reviewer providing thoughtful, constructive feedback that helps developers grow.
 
-Focus on:
-- Code quality and best practices
-- Potential bugs or issues
-- Performance considerations
-- Security concerns
-- Maintainability and readability
+## Review Philosophy
+- Focus on the 5 most impactful insights that will genuinely improve the code
+- Explain the "why" behind each suggestion to teach, not just point out issues
+- Think architecturally about design patterns, maintainability, and long-term implications
+- Be constructive and motivational - build up developers, don't tear them down
+- Provide actionable suggestions with clear reasoning
+- Use markdown formatting to make your comments clear and well-structured
+- Write comments as long as needed to fully explain the insight and teach effectively
 
-Provide specific, actionable feedback with line numbers when applicable.`,
-    max_comments: 8,
+## What to Look For
+**Architecture & Design:**
+- SOLID principles violations and opportunities
+- Design patterns that could improve the solution
+- Anti-patterns that should be refactored
+- Code organization and separation of concerns
+
+**Code Quality:**
+- Readability and expressiveness
+- Error handling and edge cases
+- Performance implications
+- Security considerations (OWASP guidelines)
+
+**Best Practices:**
+- Language/framework-specific conventions
+- Maintainability and future-proofing
+- Code reusability and DRY principles
+- Documentation and self-documenting code
+
+## Communication Style
+- Be specific about what to change and why
+- Include detailed explanations that help the developer learn
+- Acknowledge good practices when you see them
+- Frame suggestions positively ("Consider..." rather than "Don't...")
+- Focus on impact: explain how the change improves the codebase
+- Use markdown formatting for better readability
+
+## Output Guidelines
+- Limit yourself to 5 high-impact comments maximum (could be less)
+- Each comment should teach something valuable
+- Skip minor style issues unless they affect readability significantly
+- Prioritize comments that prevent bugs, improve architecture, or enhance maintainability
+- Write comprehensive comments that fully explain the reasoning
+
+Remember: You're not just reviewing code, you're helping a colleague become a better developer.`,
+    max_comments: 5,
     ignore_patterns: [
-        '*.lock',
-        '*.log',
-        'node_modules/**',
-        'dist/**',
-        'build/**',
-        '*.min.js',
-        '*.min.css'
+        "*.lock",
+        "*.log",
+        "node_modules/**",
+        "dist/**",
+        "build/**",
+        "*.min.js",
+        "*.min.css",
     ],
-    allowed_users: []
+    allowed_users: [],
 };
 //# sourceMappingURL=default-config.js.map
 
@@ -334,14 +370,9 @@ const processIncrementalDiff = (incrementalDiff, config) => {
 };
 exports.processIncrementalDiff = processIncrementalDiff;
 // Pure function to process and sort comments
-const processComments = (comments, config) => {
-    // Parse and sort comments
-    const sortedComments = [...comments];
-    // Always prioritize by severity (critical > major > suggestion)
-    const severityOrder = { critical: 0, major: 1, suggestion: 2 };
-    sortedComments.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
-    // Limit to max_comments
-    return sortedComments.slice(0, config.max_comments);
+const processComments = (comments, _config) => {
+    // Return comments as-is since we no longer use severity
+    return comments;
 };
 exports.processComments = processComments;
 //# sourceMappingURL=review.js.map
@@ -1343,30 +1374,27 @@ const buildReviewPrompt = (config, chunkContent, repositoryContext) => {
     }
     return `${fullPrompt}${contextSection}
 
-Please review the following code changes and provide feedback as a JSON array of comments.
+Please review the following code changes and provide maximum your top 1-5 most impactful insights as a JSON array.
 Each comment should have:
 - file: the filename
 - line: the line number (from the diff)
 - end_line: (optional) the end line for multi-line comments
-- severity: "critical", "major", or "suggestion"
-- comment: your feedback
+- comment: your insight with explanation of why it matters
 
-Examples of correct JSON responses:
+Examples of senior engineer feedback with markdown formatting:
 
 [
   {
     "file": "src/auth.js",
     "line": 45,
     "end_line": 65,
-    "severity": "critical",
-    "comment": "CRITICAL: SQL injection vulnerability. User input 'userInput' is directly concatenated into query without sanitization. IMPACT: Database compromise, data theft. IMMEDIATE ACTION: Use parameterized queries or ORM methods."
+    "comment": "**Security vulnerability: SQL injection risk**\n\nYour current approach uses direct string concatenation with user input, which creates a serious security vulnerability that could lead to database compromise.\n\n**Solution**: Use parameterized queries:\n\n\`\`\`sql\n-- Instead of:\nSELECT * FROM users WHERE id = '" + userId + "'\n\n-- Use:\nSELECT * FROM users WHERE id = ?\n\`\`\`\n\nThis follows OWASP guidelines and is a critical security practice that prevents attackers from injecting malicious SQL code."
   },
   {
     "file": "src/payment.js", 
     "line": 78,
     "end_line": 85,
-    "severity": "major", 
-    "comment": "Race condition in payment processing. Multiple concurrent transactions can cause double-charging. IMPACT: Financial loss, customer complaints. IMMEDIATE ACTION: Add transaction locking or atomic operations."
+    "comment": "**Great use of the Strategy pattern!**\n\nYour implementation is clean and follows good design principles. One enhancement to consider:\n\n**Add transaction locking** to prevent race conditions during concurrent payment processing:\n\n\`\`\`javascript\nconst lock = await acquirePaymentLock(userId);\ntry {\n  // Your payment processing logic\n} finally {\n  await releaseLock(lock);\n}\n\`\`\`\n\nThis would make the system more robust under high load and prevent double-charging scenarios."
   }
 ]
 
@@ -1376,9 +1404,15 @@ ${chunkContent}
 Respond with ONLY a JSON array, no other text. Do not include explanations, thinking, or any text outside the JSON array. Start your response with [ and end with ].`;
 };
 exports.buildReviewPrompt = buildReviewPrompt;
-// Helper function to validate severity
-const isValidSeverity = (severity) => {
-    return ["critical", "major", "suggestion"].includes(severity);
+// Helper function to validate comment structure
+const isValidComment = (comment) => {
+    if (typeof comment !== 'object' || comment === null) {
+        return false;
+    }
+    const obj = comment;
+    return typeof obj.file === 'string' &&
+        typeof obj.line === 'number' &&
+        typeof obj.comment === 'string';
 };
 // Pure function to parse AI response into ReviewComments
 const parseAIResponse = (responseContent) => {
@@ -1386,16 +1420,19 @@ const parseAIResponse = (responseContent) => {
     try {
         // Try to parse the full response first
         const parsedResponse = JSON.parse(responseContent);
-        comments = parsedResponse.map((comment) => {
-            if (!isValidSeverity(comment.severity)) {
-                core.warning(`Invalid severity '${comment.severity}' found, defaulting to 'suggestion'`);
-                comment.severity = "suggestion";
+        comments = parsedResponse
+            .filter((comment) => {
+            if (!isValidComment(comment)) {
+                core.warning(`Invalid comment structure found, skipping: ${JSON.stringify(comment)}`);
+                return false;
             }
+            return true;
+        })
+            .map((comment) => {
             return {
                 path: comment.file,
                 line: comment.line,
                 end_line: comment.end_line,
-                severity: comment.severity,
                 body: comment.comment,
             };
         });
@@ -1406,16 +1443,19 @@ const parseAIResponse = (responseContent) => {
             const jsonMatch = responseContent.match(/\[[\s\S]*\]/);
             if (jsonMatch) {
                 const parsedResponse = JSON.parse(jsonMatch[0]);
-                comments = parsedResponse.map((comment) => {
-                    if (!isValidSeverity(comment.severity)) {
-                        core.warning(`Invalid severity '${comment.severity}' found, defaulting to 'suggestion'`);
-                        comment.severity = "suggestion";
+                comments = parsedResponse
+                    .filter((comment) => {
+                    if (!isValidComment(comment)) {
+                        core.warning(`Invalid comment structure found, skipping: ${JSON.stringify(comment)}`);
+                        return false;
                     }
+                    return true;
+                })
+                    .map((comment) => {
                     return {
                         path: comment.file,
                         line: comment.line,
                         end_line: comment.end_line,
-                        severity: comment.severity,
                         body: comment.comment,
                     };
                 });
@@ -1615,7 +1655,7 @@ class Logger {
         if (comments.length > 0) {
             core.info(`🔍 Chunk ${current} found issues:`);
             comments.forEach((comment, idx) => {
-                core.info(`  ${idx + 1}. [${comment.severity}] ${comment.path}:${comment.line} - ${comment.body.substring(0, 100)}${comment.body.length > 100 ? '...' : ''}`);
+                core.info(`  ${idx + 1}. ${comment.path}:${comment.line} - ${comment.body.substring(0, 100)}${comment.body.length > 100 ? '...' : ''}`);
             });
         }
         else {
@@ -1628,19 +1668,12 @@ class Logger {
     static commentProcessing() {
         core.info('🔄 Processing and filtering comments...');
     }
-    static severityBreakdown(severityCounts) {
-        core.info('📊 Raw comments by severity:');
-        Object.entries(severityCounts).forEach(([severity, count]) => {
-            core.info(`  ${severity}: ${count} comments`);
-        });
-    }
     static finalComments(finalCount, originalCount) {
         core.info(`✨ Final comments after processing: ${finalCount} (filtered from ${originalCount})`);
     }
     static filteringReasons(maxComments) {
         core.info('🔽 Comments filtered due to:');
         core.info(`  - Max comments limit: ${maxComments}`);
-        core.info(`  - Severity prioritization: enabled (always)`);
     }
     static postingReview(summaryLength, commentCount) {
         core.info('📤 Posting review to GitHub...');
@@ -2186,12 +2219,8 @@ class ReviewWorkflow {
     }
     async processAndPostComments(allComments, totalTokens, modifiedFiles, pr, triggeringUser, fileChanges, incrementalMessage) {
         logger_1.Logger.commentProcessing();
-        // Log severity breakdown
-        const severityCounts = allComments.reduce((acc, comment) => {
-            acc[comment.severity] = (acc[comment.severity] || 0) + 1;
-            return acc;
-        }, {});
-        logger_1.Logger.severityBreakdown(severityCounts);
+        // Log comment count
+        core.info(`Total comments generated: ${allComments.length}`);
         const finalComments = (0, review_1.processComments)(allComments, this.config);
         logger_1.Logger.finalComments(finalComments.length, allComments.length);
         if (finalComments.length !== allComments.length) {

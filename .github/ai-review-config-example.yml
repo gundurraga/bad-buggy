@@ -1,8 +1,8 @@
-# Example AI Review Configuration (Simplified)
-# Copy this to .github/ai-review-config.yml and customize as needed
+# AI Review Configuration Template
+# Copy this to .github/ai-review-config.yml and customize for your project
 
-# Maximum number of comments per review
-max_comments: 5
+# Maximum number of comments per review (recommended: 3 for focused, impactful feedback)
+max_comments: 3
 
 # Files and patterns to ignore during review
 ignore_patterns:
@@ -12,15 +12,62 @@ ignore_patterns:
   - "node_modules/**"
   - "*.min.js"
   - "*.map"
+  - "*.test.js"  # Add if you don't want test file reviews
+  - "*.spec.ts"  # Add if you don't want test file reviews
 
 # Users allowed to trigger reviews (empty = all users allowed)
 allowed_users: []
 
-# Custom prompt to add to the default review instructions
-# This will be appended to the base review prompt
+# Custom prompt to enhance the default senior engineer review
+# Fill in the sections relevant to your project
 custom_prompt: |
-  Additional focus areas for this project:
-  - Follow our coding standards documented in CONTRIBUTING.md
-  - Ensure proper error handling and logging
-  - Validate input parameters and return types
-  - Consider accessibility in UI components
+  ## Project-Specific Context
+  # Describe your project type, tech stack, and key considerations
+  # Example: "This is a React TypeScript e-commerce application with Node.js backend"
+  
+  ## Architecture & Patterns
+  # Specify architectural patterns and principles your team follows
+  # Example: "We follow Clean Architecture with Domain-Driven Design principles"
+  # Example: "We use Repository pattern for data access and CQRS for complex operations"
+  
+  ## Technology Standards
+  # Define your tech stack specific requirements
+  # Example: "React components should use hooks and functional patterns"
+  # Example: "All API endpoints must include proper OpenAPI documentation"
+  # Example: "Database queries should use our ORM (Prisma/TypeORM) with proper typing"
+  
+  ## Security Requirements
+  # Specify security standards for your domain
+  # Example: "All user inputs must be validated and sanitized"
+  # Example: "Authentication tokens should follow JWT best practices"
+  # Example: "PCI compliance required for payment processing code"
+  
+  ## Performance Standards
+  # Define performance expectations
+  # Example: "API responses should be under 200ms for 95th percentile"
+  # Example: "Frontend components should be optimized for Core Web Vitals"
+  # Example: "Database queries should be analyzed for N+1 problems"
+  
+  ## Testing Strategy
+  # Describe your testing approach (if you want test-related feedback)
+  # Example: "Unit tests required for business logic with >80% coverage"
+  # Example: "Integration tests needed for API endpoints"
+  # Example: "E2E tests for critical user journeys"
+  
+  ## Code Quality Standards
+  # Specify your team's code quality expectations
+  # Example: "Follow our ESLint configuration and Prettier formatting"
+  # Example: "Use TypeScript strict mode with proper type definitions"
+  # Example: "Functions should be pure when possible, side effects clearly marked"
+  
+  ## Business Domain Knowledge
+  # Include domain-specific context that affects code decisions
+  # Example: "Financial calculations must handle decimal precision correctly"
+  # Example: "User data handling must comply with GDPR requirements"
+  # Example: "Real-time features should handle network disconnections gracefully"
+  
+  ## Team Conventions
+  # Document team-specific practices
+  # Example: "Use conventional commits for clear git history"
+  # Example: "API versioning follows semantic versioning"
+  # Example: "Error messages should be user-friendly and actionable"

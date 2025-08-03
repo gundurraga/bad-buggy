@@ -87,30 +87,27 @@ const buildReviewPrompt = (config, chunkContent, repositoryContext) => {
     }
     return `${fullPrompt}${contextSection}
 
-Please review the following code changes and provide feedback as a JSON array of comments.
+Please review the following code changes and provide maximum your top 1-5 most impactful insights as a JSON array.
 Each comment should have:
 - file: the filename
 - line: the line number (from the diff)
 - end_line: (optional) the end line for multi-line comments
-- severity: "critical", "major", or "suggestion"
-- comment: your feedback
+- comment: your insight with explanation of why it matters
 
-Examples of correct JSON responses:
+Examples of senior engineer feedback with markdown formatting:
 
 [
   {
     "file": "src/auth.js",
     "line": 45,
     "end_line": 65,
-    "severity": "critical",
-    "comment": "CRITICAL: SQL injection vulnerability. User input 'userInput' is directly concatenated into query without sanitization. IMPACT: Database compromise, data theft. IMMEDIATE ACTION: Use parameterized queries or ORM methods."
+    "comment": "**Security vulnerability: SQL injection risk**\n\nYour current approach uses direct string concatenation with user input, which creates a serious security vulnerability that could lead to database compromise.\n\n**Solution**: Use parameterized queries:\n\n\`\`\`sql\n-- Instead of:\nSELECT * FROM users WHERE id = '" + userId + "'\n\n-- Use:\nSELECT * FROM users WHERE id = ?\n\`\`\`\n\nThis follows OWASP guidelines and is a critical security practice that prevents attackers from injecting malicious SQL code."
   },
   {
     "file": "src/payment.js", 
     "line": 78,
     "end_line": 85,
-    "severity": "major", 
-    "comment": "Race condition in payment processing. Multiple concurrent transactions can cause double-charging. IMPACT: Financial loss, customer complaints. IMMEDIATE ACTION: Add transaction locking or atomic operations."
+    "comment": "**Great use of the Strategy pattern!**\n\nYour implementation is clean and follows good design principles. One enhancement to consider:\n\n**Add transaction locking** to prevent race conditions during concurrent payment processing:\n\n\`\`\`javascript\nconst lock = await acquirePaymentLock(userId);\ntry {\n  // Your payment processing logic\n} finally {\n  await releaseLock(lock);\n}\n\`\`\`\n\nThis would make the system more robust under high load and prevent double-charging scenarios."
   }
 ]
 
@@ -120,9 +117,15 @@ ${chunkContent}
 Respond with ONLY a JSON array, no other text. Do not include explanations, thinking, or any text outside the JSON array. Start your response with [ and end with ].`;
 };
 exports.buildReviewPrompt = buildReviewPrompt;
-// Helper function to validate severity
-const isValidSeverity = (severity) => {
-    return ["critical", "major", "suggestion"].includes(severity);
+// Helper function to validate comment structure
+const isValidComment = (comment) => {
+    if (typeof comment !== 'object' || comment === null) {
+        return false;
+    }
+    const obj = comment;
+    return typeof obj.file === 'string' &&
+        typeof obj.line === 'number' &&
+        typeof obj.comment === 'string';
 };
 // Pure function to parse AI response into ReviewComments
 const parseAIResponse = (responseContent) => {
@@ -130,16 +133,19 @@ const parseAIResponse = (responseContent) => {
     try {
         // Try to parse the full response first
         const parsedResponse = JSON.parse(responseContent);
-        comments = parsedResponse.map((comment) => {
-            if (!isValidSeverity(comment.severity)) {
-                core.warning(`Invalid severity '${comment.severity}' found, defaulting to 'suggestion'`);
-                comment.severity = "suggestion";
+        comments = parsedResponse
+            .filter((comment) => {
+            if (!isValidComment(comment)) {
+                core.warning(`Invalid comment structure found, skipping: ${JSON.stringify(comment)}`);
+                return false;
             }
+            return true;
+        })
+            .map((comment) => {
             return {
                 path: comment.file,
                 line: comment.line,
                 end_line: comment.end_line,
-                severity: comment.severity,
                 body: comment.comment,
             };
         });
@@ -150,16 +156,19 @@ const parseAIResponse = (responseContent) => {
             const jsonMatch = responseContent.match(/\[[\s\S]*\]/);
             if (jsonMatch) {
                 const parsedResponse = JSON.parse(jsonMatch[0]);
-                comments = parsedResponse.map((comment) => {
-                    if (!isValidSeverity(comment.severity)) {
-                        core.warning(`Invalid severity '${comment.severity}' found, defaulting to 'suggestion'`);
-                        comment.severity = "suggestion";
+                comments = parsedResponse
+                    .filter((comment) => {
+                    if (!isValidComment(comment)) {
+                        core.warning(`Invalid comment structure found, skipping: ${JSON.stringify(comment)}`);
+                        return false;
                     }
+                    return true;
+                })
+                    .map((comment) => {
                     return {
                         path: comment.file,
                         line: comment.line,
                         end_line: comment.end_line,
-                        severity: comment.severity,
                         body: comment.comment,
                     };
                 });

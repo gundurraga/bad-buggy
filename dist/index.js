@@ -83,29 +83,22 @@ COMMENT STRATEGY: Only add comments for genuinely critical issues that will impa
 /***/ }),
 
 /***/ 4952:
-/***/ ((__unused_webpack_module, exports) => {
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.formatCost = exports.accumulateTokens = exports.calculateCost = exports.getModelPricing = void 0;
-// Model pricing configuration (per 1M tokens)
-const MODEL_PRICING = {
-    'claude-4': { input: 3.0, output: 15.0 },
-    'claude-4-opus': { input: 15.0, output: 75.0 },
-};
-// Pure function to get model pricing
-const getModelPricing = (model) => {
-    return MODEL_PRICING[model] || MODEL_PRICING['claude-4'];
-};
-exports.getModelPricing = getModelPricing;
-// Pure function to calculate cost
-const calculateCost = (model, tokens) => {
-    const pricing = (0, exports.getModelPricing)(model);
-    const inputCost = (tokens.input / 1000000) * pricing.input;
-    const outputCost = (tokens.output / 1000000) * pricing.output;
-    const totalCost = inputCost + outputCost;
-    return { inputCost, outputCost, totalCost, pricing };
+exports.formatCost = exports.accumulateTokens = exports.calculateCost = void 0;
+const pricing_service_1 = __nccwpck_require__(2644);
+// New dynamic function: Calculate cost using PricingService
+const calculateCost = async (usage, model, provider, apiKey) => {
+    const pricingService = pricing_service_1.PricingServiceFactory.create(provider, apiKey);
+    const cost = await pricingService.calculateCost(usage, model);
+    return {
+        inputCost: cost.inputCost,
+        outputCost: cost.outputCost,
+        totalCost: cost.totalCost,
+    };
 };
 exports.calculateCost = calculateCost;
 // Pure function to accumulate token usage
@@ -396,6 +389,9 @@ const callOpenRouter = async (prompt, apiKey, model) => {
             model,
             messages: [{ role: "user", content: prompt }],
             max_tokens: 4000,
+            usage: {
+                include: true, // Enable OpenRouter usage accounting
+            },
         }),
     });
     if (!response.ok) {
@@ -408,6 +404,10 @@ const callOpenRouter = async (prompt, apiKey, model) => {
         usage: {
             input_tokens: data.usage.prompt_tokens,
             output_tokens: data.usage.completion_tokens,
+            cost: data.usage.cost,
+            cost_details: data.usage.cost_details,
+            cached_tokens: data.usage.prompt_tokens_details?.cached_tokens,
+            reasoning_tokens: data.usage.completion_tokens_details?.reasoning_tokens,
         },
     };
 };
@@ -781,6 +781,7 @@ exports.reviewChunk = exports.parseAIResponse = exports.buildReviewPrompt = void
 const core = __importStar(__nccwpck_require__(2186));
 const ai_api_1 = __nccwpck_require__(1884);
 const review_1 = __nccwpck_require__(7650);
+const token_counter_1 = __nccwpck_require__(1690);
 /**
  * Service for handling Bad Buggy-powered code review operations
  */
@@ -888,9 +889,34 @@ const reviewChunk = async (chunk, config, provider, apiKey, model) => {
     const prompt = (0, exports.buildReviewPrompt)(config, chunk.content);
     core.info(`🔗 Calling AI provider: ${provider} with model: ${model}`);
     core.info(`📝 Prompt length: ${prompt.length} characters`);
+    // Pre-request token estimation using provider-specific token counter
+    let estimatedInputTokens = 0;
+    try {
+        const tokenCounter = token_counter_1.TokenCounterFactory.create(provider, apiKey);
+        const tokenResult = await tokenCounter.countTokens(prompt, model);
+        estimatedInputTokens = tokenResult.tokens;
+        core.info(`🔢 Estimated input tokens: ${estimatedInputTokens}`);
+    }
+    catch (error) {
+        core.warning(`Failed to get accurate token count, using fallback: ${error}`);
+        estimatedInputTokens = (0, review_1.countTokens)(prompt, model);
+    }
     const response = await (0, ai_api_1.callAIProvider)(provider, prompt, apiKey, model);
     core.info(`🤖 AI Response received: ${response.content.length} characters`);
     core.info(`📊 AI Response preview: "${response.content.substring(0, 200)}${response.content.length > 200 ? '...' : ''}"`);
+    // Log enhanced usage information if available
+    if (response.usage) {
+        core.info(`📊 Token usage - Input: ${response.usage.input_tokens}, Output: ${response.usage.output_tokens}`);
+        if (response.usage.cost) {
+            core.info(`💰 Direct cost: $${response.usage.cost}`);
+        }
+        if (response.usage.cached_tokens) {
+            core.info(`🗄️ Cached tokens: ${response.usage.cached_tokens}`);
+        }
+        if (response.usage.reasoning_tokens) {
+            core.info(`🧠 Reasoning tokens: ${response.usage.reasoning_tokens}`);
+        }
+    }
     const comments = (0, exports.parseAIResponse)(response.content);
     core.info(`💬 Parsed ${comments.length} comments from AI response`);
     const tokens = response.usage
@@ -899,7 +925,7 @@ const reviewChunk = async (chunk, config, provider, apiKey, model) => {
             output: response.usage.output_tokens,
         }
         : {
-            input: (0, review_1.countTokens)(prompt, model),
+            input: estimatedInputTokens || (0, review_1.countTokens)(prompt, model),
             output: (0, review_1.countTokens)(response.content, model),
         };
     return { comments, tokens };
@@ -1108,6 +1134,292 @@ exports.Logger = Logger;
 
 /***/ }),
 
+/***/ 2644:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.PricingServiceFactory = exports.PricingService = void 0;
+const types_1 = __nccwpck_require__(6118);
+// Pricing Service for dynamic pricing and cost calculation
+class PricingService {
+    constructor(apiKey, provider) {
+        this.apiKey = apiKey;
+        this.provider = provider;
+        this.cache = {};
+        this.CACHE_TTL = 3600000; // 1 hour in milliseconds
+    }
+    // Get model pricing with caching
+    async getModelPricing(model) {
+        const cacheKey = `${this.provider}:${model}`;
+        const cached = this.cache[cacheKey];
+        if (cached && Date.now() - cached.timestamp < cached.ttl) {
+            return cached.pricing;
+        }
+        let pricing;
+        try {
+            if (this.provider === "anthropic") {
+                pricing = await this.fetchAnthropicPricing(model);
+            }
+            else {
+                pricing = await this.fetchOpenRouterPricing(model);
+            }
+            // Cache the result
+            this.cache[cacheKey] = {
+                pricing,
+                timestamp: Date.now(),
+                ttl: this.CACHE_TTL,
+            };
+            return pricing;
+        }
+        catch (error) {
+            // If fetching fails, try to use cached data even if expired
+            if (cached) {
+                console.warn(`Using expired pricing data for ${model}: ${error}`);
+                return cached.pricing;
+            }
+            throw error;
+        }
+    }
+    // Fetch Anthropic model pricing
+    async fetchAnthropicPricing(model) {
+        try {
+            // Try to get pricing from Anthropic's models API
+            const response = await fetch("https://api.anthropic.com/v1/models", {
+                headers: {
+                    "x-api-key": this.apiKey,
+                    "anthropic-version": "2023-06-01",
+                },
+            });
+            if (response.ok) {
+                const data = (await response.json());
+                const modelData = data.data?.find((m) => m.id === model);
+                if (modelData?.pricing) {
+                    return {
+                        input: modelData.pricing.input_tokens_per_million / 1000000,
+                        output: modelData.pricing.output_tokens_per_million / 1000000,
+                    };
+                }
+            }
+        }
+        catch (error) {
+            console.warn(`Failed to fetch Anthropic pricing from API: ${error}`);
+        }
+        // Fallback to known pricing (updated as of 2024)
+        const knownPricing = {
+            "claude-3-5-sonnet-20241022": { input: 0.000003, output: 0.000015 },
+            "claude-3-5-sonnet-20240620": { input: 0.000003, output: 0.000015 },
+            "claude-3-5-haiku-20241022": { input: 0.000001, output: 0.000005 },
+            "claude-3-opus-20240229": { input: 0.000015, output: 0.000075 },
+            "claude-3-sonnet-20240229": { input: 0.000003, output: 0.000015 },
+            "claude-3-haiku-20240307": { input: 0.00000025, output: 0.00000125 },
+        };
+        const pricing = knownPricing[model];
+        if (!pricing) {
+            throw new types_1.AIProviderError(`Unknown Anthropic model pricing: ${model}`);
+        }
+        return pricing;
+    }
+    // Fetch OpenRouter model pricing
+    async fetchOpenRouterPricing(model) {
+        try {
+            const response = await fetch("https://openrouter.ai/api/v1/models", {
+                headers: {
+                    Authorization: `Bearer ${this.apiKey}`,
+                },
+            });
+            if (!response.ok) {
+                throw new types_1.AIProviderError(`OpenRouter models API error: ${response.statusText}`, response.status);
+            }
+            const data = (await response.json());
+            const modelData = data.data?.find((m) => m.id === model);
+            if (!modelData?.pricing) {
+                throw new types_1.AIProviderError(`Model not found or no pricing available: ${model}`);
+            }
+            return {
+                input: parseFloat(modelData.pricing.prompt) || 0,
+                output: parseFloat(modelData.pricing.completion) || 0,
+            };
+        }
+        catch (error) {
+            if (error instanceof types_1.AIProviderError) {
+                throw error;
+            }
+            throw new types_1.AIProviderError(`Failed to fetch OpenRouter pricing: ${error instanceof Error ? error.message : "Unknown error"}`);
+        }
+    }
+    // Calculate cost from usage data
+    async calculateCost(usage, model) {
+        // For OpenRouter, if cost is provided directly, use it
+        if (this.provider === "openrouter" &&
+            "cost" in usage &&
+            typeof usage.cost === "number") {
+            const directCost = usage.cost;
+            const pricing = await this.getModelPricing(model);
+            return {
+                inputCost: usage.input * pricing.input,
+                outputCost: usage.output * pricing.output,
+                totalCost: directCost,
+            };
+        }
+        // Standard calculation using pricing
+        const pricing = await this.getModelPricing(model);
+        const inputCost = usage.input * pricing.input;
+        const outputCost = usage.output * pricing.output;
+        return {
+            inputCost,
+            outputCost,
+            totalCost: inputCost + outputCost,
+        };
+    }
+    // Calculate cost from usage with cost data (for OpenRouter responses)
+    calculateCostFromUsageWithCost(usageWithCost, pricing) {
+        const inputCost = usageWithCost.input_tokens * pricing.input;
+        const outputCost = usageWithCost.output_tokens * pricing.output;
+        return {
+            inputCost,
+            outputCost,
+            totalCost: usageWithCost.cost || inputCost + outputCost,
+        };
+    }
+    // Clear expired cache entries
+    clearExpiredCache() {
+        const now = Date.now();
+        Object.keys(this.cache).forEach((key) => {
+            const entry = this.cache[key];
+            if (now - entry.timestamp >= entry.ttl) {
+                delete this.cache[key];
+            }
+        });
+    }
+}
+exports.PricingService = PricingService;
+// Factory for creating pricing services
+class PricingServiceFactory {
+    static create(provider, apiKey) {
+        return new PricingService(apiKey, provider);
+    }
+}
+exports.PricingServiceFactory = PricingServiceFactory;
+//# sourceMappingURL=pricing-service.js.map
+
+/***/ }),
+
+/***/ 1690:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.TokenCounterFactory = exports.OpenRouterTokenCounter = exports.AnthropicTokenCounter = void 0;
+const types_1 = __nccwpck_require__(6118);
+// Anthropic Token Counter using their Token Counting API
+class AnthropicTokenCounter {
+    constructor(apiKey) {
+        this.apiKey = apiKey;
+    }
+    async countTokens(text, model) {
+        if (!this.apiKey) {
+            throw new types_1.AIProviderError('Anthropic API key is required for token counting');
+        }
+        try {
+            const response = await fetch('https://api.anthropic.com/v1/messages/count_tokens', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': this.apiKey,
+                    'anthropic-version': '2023-06-01',
+                },
+                body: JSON.stringify({
+                    model: model,
+                    messages: [{ role: 'user', content: text }],
+                }),
+            });
+            if (!response.ok) {
+                throw new types_1.AIProviderError(`Anthropic token counting API error: ${response.statusText}`, response.status);
+            }
+            const data = await response.json();
+            return {
+                tokens: data.input_tokens,
+                provider: 'anthropic',
+                model: model,
+            };
+        }
+        catch (error) {
+            if (error instanceof types_1.AIProviderError) {
+                throw error;
+            }
+            throw new types_1.AIProviderError(`Failed to count tokens with Anthropic: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+}
+exports.AnthropicTokenCounter = AnthropicTokenCounter;
+// OpenRouter Token Counter using minimal completion requests
+class OpenRouterTokenCounter {
+    constructor(apiKey) {
+        this.apiKey = apiKey;
+    }
+    async countTokens(text, model) {
+        if (!this.apiKey) {
+            throw new types_1.AIProviderError('OpenRouter API key is required for token counting');
+        }
+        try {
+            // Use a minimal completion request to get token count
+            const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.apiKey}`,
+                    'HTTP-Referer': 'https://github.com/gundurraga/bad-buggy',
+                    'X-Title': 'Bad Buggy Code Reviewer',
+                },
+                body: JSON.stringify({
+                    model: model,
+                    messages: [{ role: 'user', content: text }],
+                    max_tokens: 1, // Minimal completion to get token count
+                    usage: {
+                        include: true, // Enable usage accounting
+                    },
+                }),
+            });
+            if (!response.ok) {
+                throw new types_1.AIProviderError(`OpenRouter token counting API error: ${response.statusText}`, response.status);
+            }
+            const data = await response.json();
+            return {
+                tokens: data.usage?.prompt_tokens || 0,
+                provider: 'openrouter',
+                model: model,
+            };
+        }
+        catch (error) {
+            if (error instanceof types_1.AIProviderError) {
+                throw error;
+            }
+            throw new types_1.AIProviderError(`Failed to count tokens with OpenRouter: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+}
+exports.OpenRouterTokenCounter = OpenRouterTokenCounter;
+// Token Counter Factory
+class TokenCounterFactory {
+    static create(provider, apiKey) {
+        switch (provider) {
+            case 'anthropic':
+                return new AnthropicTokenCounter(apiKey);
+            case 'openrouter':
+                return new OpenRouterTokenCounter(apiKey);
+            default:
+                throw new types_1.AIProviderError(`Unsupported provider for token counting: ${provider}`);
+        }
+    }
+}
+exports.TokenCounterFactory = TokenCounterFactory;
+//# sourceMappingURL=token-counter.js.map
+
+/***/ }),
+
 /***/ 7336:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
@@ -1263,9 +1575,17 @@ class ReviewWorkflow {
     }
     async reportCosts(totalTokens) {
         logger_1.Logger.costCalculation();
-        const cost = (0, cost_1.calculateCost)(this.inputs.model, totalTokens);
-        logger_1.Logger.costSummary(cost.totalCost, cost.inputCost, cost.outputCost);
-        logger_1.Logger.costBreakdown(totalTokens, cost.inputCost, cost.outputCost, cost.totalCost);
+        try {
+            // Use dynamic cost calculation with real-time pricing
+            const cost = await (0, cost_1.calculateCost)(totalTokens, this.inputs.model, this.inputs.aiProvider, this.inputs.apiKey);
+            logger_1.Logger.costSummary(cost.totalCost, cost.inputCost, cost.outputCost);
+            logger_1.Logger.costBreakdown(totalTokens, cost.inputCost, cost.outputCost, cost.totalCost);
+        }
+        catch (error) {
+            console.error(`Cost calculation failed: ${error}`);
+            console.log(`Token usage - Input: ${totalTokens.input}, Output: ${totalTokens.output}`);
+            console.log('Ensure API keys are valid and models are supported by the provider.');
+        }
     }
 }
 exports.ReviewWorkflow = ReviewWorkflow;

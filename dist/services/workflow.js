@@ -149,9 +149,17 @@ class ReviewWorkflow {
     }
     async reportCosts(totalTokens) {
         logger_1.Logger.costCalculation();
-        const cost = (0, cost_1.calculateCost)(this.inputs.model, totalTokens);
-        logger_1.Logger.costSummary(cost.totalCost, cost.inputCost, cost.outputCost);
-        logger_1.Logger.costBreakdown(totalTokens, cost.inputCost, cost.outputCost, cost.totalCost);
+        try {
+            // Use dynamic cost calculation with real-time pricing
+            const cost = await (0, cost_1.calculateCost)(totalTokens, this.inputs.model, this.inputs.aiProvider, this.inputs.apiKey);
+            logger_1.Logger.costSummary(cost.totalCost, cost.inputCost, cost.outputCost);
+            logger_1.Logger.costBreakdown(totalTokens, cost.inputCost, cost.outputCost, cost.totalCost);
+        }
+        catch (error) {
+            console.error(`Cost calculation failed: ${error}`);
+            console.log(`Token usage - Input: ${totalTokens.input}, Output: ${totalTokens.output}`);
+            console.log('Ensure API keys are valid and models are supported by the provider.');
+        }
     }
 }
 exports.ReviewWorkflow = ReviewWorkflow;

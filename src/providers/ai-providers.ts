@@ -16,6 +16,21 @@ interface AnthropicResponse {
 
 interface OpenRouterResponse {
   choices: Array<{ message: { content: string } }>;
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+    cost?: number;
+    cost_details?: {
+      upstream_inference_cost?: number;
+    };
+    prompt_tokens_details?: {
+      cached_tokens?: number;
+    };
+    completion_tokens_details?: {
+      reasoning_tokens?: number;
+    };
+  };
 }
 
 async function callAnthropic(prompt: string, model: string, apiKey: string): Promise<string> {
@@ -67,6 +82,9 @@ async function callOpenRouter(prompt: string, model: string, apiKey: string): Pr
       body: JSON.stringify({
         model: model,
         messages: [{ role: 'user', content: prompt }],
+        usage: {
+          include: true, // Enable OpenRouter usage accounting
+        },
       }),
     }
   );

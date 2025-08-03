@@ -2,6 +2,7 @@ import * as core from '@actions/core';
 import { ReviewConfig, ReviewComment, TokenUsage, DiffChunk } from '../types';
 import { callAIProvider } from '../effects/ai-api';
 import { countTokens } from '../domains/review';
+import { TokenCounterFactory } from './token-counter';
 
 /**
  * Service for handling Bad Buggy-powered code review operations
@@ -123,6 +124,18 @@ export const reviewChunk = async (
   core.info(`🔗 Calling AI provider: ${provider} with model: ${model}`);
   core.info(`📝 Prompt length: ${prompt.length} characters`);
 
+  // Pre-request token estimation using provider-specific token counter
+  let estimatedInputTokens = 0;
+  try {
+    const tokenCounter = TokenCounterFactory.create(provider, apiKey);
+    const tokenResult = await tokenCounter.countTokens(prompt, model);
+    estimatedInputTokens = tokenResult.tokens;
+    core.info(`🔢 Estimated input tokens: ${estimatedInputTokens}`);
+  } catch (error) {
+    core.warning(`Failed to get accurate token count, using fallback: ${error}`);
+    estimatedInputTokens = countTokens(prompt, model);
+  }
+
   const response = await callAIProvider(provider, prompt, apiKey, model);
 
   core.info(`🤖 AI Response received: ${response.content.length} characters`);
@@ -131,6 +144,20 @@ export const reviewChunk = async (
       response.content.length > 200 ? '...' : ''
     }"`
   );
+
+  // Log enhanced usage information if available
+  if (response.usage) {
+    core.info(`📊 Token usage - Input: ${response.usage.input_tokens}, Output: ${response.usage.output_tokens}`);
+    if (response.usage.cost) {
+      core.info(`💰 Direct cost: $${response.usage.cost}`);
+    }
+    if (response.usage.cached_tokens) {
+      core.info(`🗄️ Cached tokens: ${response.usage.cached_tokens}`);
+    }
+    if (response.usage.reasoning_tokens) {
+      core.info(`🧠 Reasoning tokens: ${response.usage.reasoning_tokens}`);
+    }
+  }
 
   const comments = parseAIResponse(response.content);
   core.info(`💬 Parsed ${comments.length} comments from AI response`);
@@ -141,7 +168,7 @@ export const reviewChunk = async (
         output: response.usage.output_tokens,
       }
     : {
-        input: countTokens(prompt, model),
+        input: estimatedInputTokens || countTokens(prompt, model),
         output: countTokens(response.content, model),
       };
 

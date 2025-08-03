@@ -45,6 +45,9 @@ const callOpenRouter = async (prompt, apiKey, model) => {
             model,
             messages: [{ role: "user", content: prompt }],
             max_tokens: 4000,
+            usage: {
+                include: true, // Enable OpenRouter usage accounting
+            },
         }),
     });
     if (!response.ok) {
@@ -57,6 +60,10 @@ const callOpenRouter = async (prompt, apiKey, model) => {
         usage: {
             input_tokens: data.usage.prompt_tokens,
             output_tokens: data.usage.completion_tokens,
+            cost: data.usage.cost,
+            cost_details: data.usage.cost_details,
+            cached_tokens: data.usage.prompt_tokens_details?.cached_tokens,
+            reasoning_tokens: data.usage.completion_tokens_details?.reasoning_tokens,
         },
     };
 };

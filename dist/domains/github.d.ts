@@ -1,4 +1,4 @@
-import { PullRequest } from '../types';
+import { PullRequest } from "../types";
 export declare const extractPRInfo: (pr: PullRequest) => {
     number: number;
     headSha: string;
@@ -18,9 +18,10 @@ export declare const formatReviewBody: (model: string, totalTokens: {
     additions: number;
     deletions: number;
 }) => string;
-export declare const createReviewComment: (path: string, line: number, body: string) => {
+export declare const createReviewComment: (path: string, line: number, body: string, end_line?: number) => {
     path: string;
     line: number;
     body: string;
+    end_line?: number;
 };
 //# sourceMappingURL=github.d.ts.map

@@ -45,7 +45,7 @@ export interface ReviewConfig {
 export type Config = ReviewConfig;
 export interface ActionInputs {
     githubToken: string;
-    aiProvider: 'anthropic' | 'openrouter';
+    aiProvider: "anthropic" | "openrouter";
     apiKey: string;
     model: string;
     configFile: string;
@@ -75,6 +75,7 @@ export interface CostCalculation {
 export interface ReviewComment {
     path: string;
     line: number;
+    end_line?: number;
     body: string;
 }
 export interface DiffChunk {
@@ -85,7 +86,7 @@ export interface DiffChunk {
 }
 export interface FileChange {
     filename: string;
-    status: 'added' | 'modified' | 'removed' | 'renamed';
+    status: "added" | "modified" | "removed" | "renamed";
     additions: number;
     deletions: number;
     changes: number;
@@ -115,7 +116,7 @@ export interface RepositoryStructure {
 }
 export interface FileInfo {
     path: string;
-    type: 'file' | 'directory';
+    type: "file" | "directory";
     extension?: string;
     size?: number;
 }

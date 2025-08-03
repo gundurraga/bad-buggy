@@ -1,4 +1,4 @@
-import { Config } from '../types';
+import { Config } from "../types";
 export declare class ConfigValidationError extends Error {
     readonly field: string;
     constructor(message: string, field: string);

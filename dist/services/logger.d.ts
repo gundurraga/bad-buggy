@@ -7,7 +7,7 @@ export declare class Logger {
     static inputs(provider: string, model: string, configFile: string): void;
     static inputValidation(): void;
     static configLoading(configFile: string): void;
-    static configLoaded(maxComments: number, prioritizeBySeverity: boolean): void;
+    static configLoaded(maxComments: number): void;
     static configValidation(): void;
     static githubInit(owner: string, repo: string, eventName: string): void;
     static prInfo(number: number, title: string, author: string, body: string | null, url: string, headRef: string, baseRef: string, additions: number, deletions: number, changedFiles: number): void;
@@ -29,7 +29,7 @@ export declare class Logger {
     static commentProcessing(): void;
     static severityBreakdown(severityCounts: Record<string, number>): void;
     static finalComments(finalCount: number, originalCount: number): void;
-    static filteringReasons(maxComments: number, prioritizeBySeverity: boolean): void;
+    static filteringReasons(maxComments: number): void;
     static postingReview(summaryLength: number, commentCount: number): void;
     static reviewPosted(commentCount: number, duration: number): void;
     static summaryOnly(summaryLength: number): void;

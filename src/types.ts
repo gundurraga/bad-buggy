@@ -42,12 +42,10 @@ export interface GitHubContext {
 // Configuration types
 export interface ReviewConfig {
   review_prompt: string;
+  custom_prompt?: string; // Additional user-specific prompt
   max_comments: number;
-  prioritize_by_severity: boolean;
-  review_aspects: string[];
   ignore_patterns: string[];
   allowed_users: string[];
-  allowed_users_env?: string;
 }
 
 // Type alias for compatibility
@@ -97,14 +95,63 @@ export interface ReviewComment {
 
 export interface DiffChunk {
   content: string;
-  files: string[];
-  size: number;
+  fileChanges: FileChange[];
+  repositoryContext?: RepositoryContext;
+  contextualContent?: Record<string, string>; // ±100 lines around changes
 }
 
 export interface FileChange {
   filename: string;
-  status: 'added' | 'modified' | 'removed';
+  status: 'added' | 'modified' | 'removed' | 'renamed';
+  additions: number;
+  deletions: number;
+  changes: number;
   patch?: string;
+  contextualContent?: string; // ±100 lines around changes
+}
+
+// Incremental review types
+export interface ReviewState {
+  prNumber: number;
+  lastReviewedSha: string;
+  reviewedCommits: string[];
+  timestamp: string;
+}
+
+export interface IncrementalDiff {
+  newCommits: string[];
+  changedFiles: FileChange[];
+  isIncremental: boolean;
+}
+
+// Enhanced context types
+export interface RepositoryContext {
+  structure: RepositoryStructure;
+  packageInfo?: PackageInfo;
+}
+
+export interface RepositoryStructure {
+  directories: string[];
+  files: FileInfo[];
+  totalFiles: number;
+  languages: Record<string, number>;
+}
+
+export interface FileInfo {
+  path: string;
+  type: 'file' | 'directory';
+  extension?: string;
+  size?: number;
+}
+
+export interface PackageInfo {
+  name?: string;
+  version?: string;
+  description?: string;
+  main?: string;
+  scripts?: Record<string, string>;
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
 }
 
 // Security types

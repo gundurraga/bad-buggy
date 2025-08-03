@@ -32,7 +32,7 @@ export const run = async (): Promise<void> => {
     // Load and validate configuration
     Logger.configLoading(inputs.configFile);
     const config = await loadConfig(inputs.configFile);
-    Logger.configLoaded(config.max_comments, config.prioritize_by_severity);
+    Logger.configLoaded(config.max_comments);
 
     // Initialize GitHub client and context
     const octokit = github.getOctokit(inputs.githubToken);
@@ -50,13 +50,17 @@ export const run = async (): Promise<void> => {
     const modifiedFiles = await workflow.performSecurityChecks(pr, triggeringUser, repoOwner);
     await workflow.checkUserPermissions(triggeringUser, repoOwner);
     
-    const { comments, tokens, fileChanges } = await workflow.processAndReviewDiff();
+    const { comments, tokens, fileChanges, incrementalMessage } = await workflow.processAndReviewDiff();
     
     if (comments.length === 0 && tokens.input === 0) {
+      // Handle case where there are no new changes to review (incremental)
+      if (incrementalMessage) {
+        core.info(incrementalMessage);
+      }
       return; // No files to review
     }
     
-    await workflow.processAndPostComments(comments, tokens, modifiedFiles, pr, triggeringUser, fileChanges);
+    await workflow.processAndPostComments(comments, tokens, modifiedFiles, pr, triggeringUser, fileChanges, incrementalMessage);
     await workflow.reportCosts(tokens);
 
     Logger.completion();

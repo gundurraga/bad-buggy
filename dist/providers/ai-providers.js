@@ -49,6 +49,9 @@ async function callOpenRouter(prompt, model, apiKey) {
         body: JSON.stringify({
             model: model,
             messages: [{ role: 'user', content: prompt }],
+            usage: {
+                include: true, // Enable OpenRouter usage accounting
+            },
         }),
     });
     if (!response.ok) {

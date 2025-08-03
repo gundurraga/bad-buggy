@@ -65,36 +65,29 @@ Provide specific, actionable feedback with line numbers when applicable.`,
 /***/ }),
 
 /***/ 4952:
-/***/ ((__unused_webpack_module, exports) => {
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.formatCost = exports.accumulateTokens = exports.calculateCost = exports.getModelPricing = void 0;
-// Model pricing configuration (per 1M tokens)
-const MODEL_PRICING = {
-    'claude-4': { input: 3.0, output: 15.0 },
-    'claude-4-opus': { input: 15.0, output: 75.0 },
-};
-// Pure function to get model pricing
-const getModelPricing = (model) => {
-    return MODEL_PRICING[model] || MODEL_PRICING['claude-4'];
-};
-exports.getModelPricing = getModelPricing;
-// Pure function to calculate cost
-const calculateCost = (model, tokens) => {
-    const pricing = (0, exports.getModelPricing)(model);
-    const inputCost = (tokens.input / 1000000) * pricing.input;
-    const outputCost = (tokens.output / 1000000) * pricing.output;
-    const totalCost = inputCost + outputCost;
-    return { inputCost, outputCost, totalCost, pricing };
+exports.formatCost = exports.accumulateTokens = exports.calculateCost = void 0;
+const pricing_service_1 = __nccwpck_require__(2644);
+// New dynamic function: Calculate cost using PricingService with secure credential management
+const calculateCost = async (usage, model, provider) => {
+    const pricingService = pricing_service_1.PricingServiceFactory.create(provider);
+    const cost = await pricingService.calculateCost(usage, model);
+    return {
+        inputCost: cost.inputCost,
+        outputCost: cost.outputCost,
+        totalCost: cost.totalCost,
+    };
 };
 exports.calculateCost = calculateCost;
 // Pure function to accumulate token usage
 const accumulateTokens = (existing, additional) => {
     return {
         input: existing.input + additional.input,
-        output: existing.output + additional.output
+        output: existing.output + additional.output,
     };
 };
 exports.accumulateTokens = accumulateTokens;
@@ -427,8 +420,11 @@ exports.validateSecurity = validateSecurity;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.callAIProvider = exports.callOpenRouter = exports.callAnthropic = void 0;
 const types_1 = __nccwpck_require__(6118);
+const credential_manager_1 = __nccwpck_require__(2803);
 // Effect: Call Anthropic API
-const callAnthropic = async (prompt, apiKey, model) => {
+const callAnthropic = async (prompt, model) => {
+    const credentialManager = credential_manager_1.CredentialManager.getInstance();
+    const apiKey = credentialManager.getApiKey('anthropic');
     const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
@@ -457,7 +453,9 @@ const callAnthropic = async (prompt, apiKey, model) => {
 };
 exports.callAnthropic = callAnthropic;
 // Effect: Call OpenRouter API
-const callOpenRouter = async (prompt, apiKey, model) => {
+const callOpenRouter = async (prompt, model) => {
+    const credentialManager = credential_manager_1.CredentialManager.getInstance();
+    const apiKey = credentialManager.getApiKey('openrouter');
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -470,6 +468,9 @@ const callOpenRouter = async (prompt, apiKey, model) => {
             model,
             messages: [{ role: "user", content: prompt }],
             max_tokens: 4000,
+            usage: {
+                include: true, // Enable OpenRouter usage accounting
+            },
         }),
     });
     if (!response.ok) {
@@ -482,18 +483,22 @@ const callOpenRouter = async (prompt, apiKey, model) => {
         usage: {
             input_tokens: data.usage.prompt_tokens,
             output_tokens: data.usage.completion_tokens,
+            cost: data.usage.cost,
+            cost_details: data.usage.cost_details,
+            cached_tokens: data.usage.prompt_tokens_details?.cached_tokens,
+            reasoning_tokens: data.usage.completion_tokens_details?.reasoning_tokens,
         },
     };
 };
 exports.callOpenRouter = callOpenRouter;
 // Effect: Route to appropriate AI provider
-const callAIProvider = async (provider, prompt, apiKey, model) => {
+const callAIProvider = async (provider, prompt, model) => {
     try {
         switch (provider) {
             case "anthropic":
-                return await (0, exports.callAnthropic)(prompt, apiKey, model);
+                return await (0, exports.callAnthropic)(prompt, model);
             case "openrouter":
-                return await (0, exports.callOpenRouter)(prompt, apiKey, model);
+                return await (0, exports.callOpenRouter)(prompt, model);
             default:
                 throw new types_1.AIProviderError(`Unsupported AI provider: ${provider}`);
         }
@@ -1072,6 +1077,179 @@ if (require.main === require.cache[eval('__filename')]) {
 
 /***/ }),
 
+/***/ 2803:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.CredentialManager = void 0;
+const core = __importStar(__nccwpck_require__(2186));
+/**
+ * Secure credential management service
+ * Handles API key validation, access control, and secure storage
+ */
+class CredentialManager {
+    constructor() {
+        this.credentials = new Map();
+        this.accessLog = [];
+    }
+    static getInstance() {
+        if (!CredentialManager.instance) {
+            CredentialManager.instance = new CredentialManager();
+        }
+        return CredentialManager.instance;
+    }
+    /**
+     * Securely retrieve API key for a provider
+     * @param provider The AI provider name
+     * @returns The API key if valid and authorized
+     */
+    getApiKey(provider) {
+        this.logAccess(provider, "retrieve");
+        const key = this.credentials.get(provider) || this.getFromEnvironment(provider);
+        if (!key) {
+            throw new Error(`API key not found for provider: ${provider}`);
+        }
+        if (!this.validateApiKey(key, provider)) {
+            throw new Error(`Invalid API key format for provider: ${provider}`);
+        }
+        return key;
+    }
+    /**
+     * Securely store API key for a provider
+     * @param provider The AI provider name
+     * @param apiKey The API key to store
+     */
+    setApiKey(provider, apiKey) {
+        if (!this.validateApiKey(apiKey, provider)) {
+            throw new Error(`Invalid API key format for provider: ${provider}`);
+        }
+        this.credentials.set(provider, apiKey);
+        this.logAccess(provider, "store");
+    }
+    /**
+     * Validate API key format based on provider
+     * @param apiKey The API key to validate
+     * @param provider The provider name
+     * @returns True if valid format
+     */
+    validateApiKey(apiKey, provider) {
+        if (!apiKey || typeof apiKey !== "string" || apiKey.trim().length === 0) {
+            return false;
+        }
+        // Provider-specific validation
+        switch (provider.toLowerCase()) {
+            case "anthropic":
+                return apiKey.startsWith("sk-ant-") && apiKey.length > 20;
+            case "openrouter":
+                return apiKey.startsWith("sk-or-") && apiKey.length > 20;
+            case "openai":
+                return apiKey.startsWith("sk-") && apiKey.length > 20;
+            default:
+                // Generic validation for unknown providers
+                return apiKey.length > 10;
+        }
+    }
+    /**
+     * Get API key from environment variables
+     * @param provider The provider name
+     * @returns The API key from environment
+     */
+    getFromEnvironment(provider) {
+        const envVarNames = {
+            anthropic: ["ANTHROPIC_API_KEY", "CLAUDE_API_KEY"],
+            openrouter: ["OPENROUTER_API_KEY", "OR_API_KEY"],
+            openai: ["OPENAI_API_KEY"],
+        };
+        const possibleNames = envVarNames[provider.toLowerCase()] || [`${provider.toUpperCase()}_API_KEY`];
+        for (const envVar of possibleNames) {
+            const value = process.env[envVar] ||
+                core.getInput(envVar.toLowerCase().replace("_", "-"));
+            if (value) {
+                return value;
+            }
+        }
+        return undefined;
+    }
+    /**
+     * Log access attempts for security auditing
+     * @param provider The provider name
+     * @param action The action performed
+     */
+    logAccess(provider, action) {
+        this.accessLog.push({
+            provider,
+            timestamp: new Date(),
+            action,
+        });
+        // Keep only last 100 entries to prevent memory leaks
+        if (this.accessLog.length > 100) {
+            this.accessLog = this.accessLog.slice(-100);
+        }
+        core.debug(`Credential access: ${provider} - ${action}`);
+    }
+    /**
+     * Clear all stored credentials (for security)
+     */
+    clearCredentials() {
+        this.credentials.clear();
+        this.logAccess("system", "clear_all");
+    }
+    /**
+     * Get access log for security auditing
+     * @returns Array of access log entries
+     */
+    getAccessLog() {
+        return [...this.accessLog]; // Return copy to prevent modification
+    }
+    /**
+     * Check if API key exists for provider
+     * @param provider The provider name
+     * @returns True if key exists
+     */
+    hasApiKey(provider) {
+        return (this.credentials.has(provider) || !!this.getFromEnvironment(provider));
+    }
+}
+exports.CredentialManager = CredentialManager;
+//# sourceMappingURL=credential-manager.js.map
+
+/***/ }),
+
 /***/ 1821:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -1115,6 +1293,7 @@ exports.reviewChunk = exports.parseAIResponse = exports.buildReviewPrompt = void
 const core = __importStar(__nccwpck_require__(2186));
 const ai_api_1 = __nccwpck_require__(1884);
 const review_1 = __nccwpck_require__(7650);
+const token_counter_1 = __nccwpck_require__(1690);
 /**
  * Service for handling Bad Buggy-powered code review operations
  */
@@ -1256,8 +1435,8 @@ const parseAIResponse = (responseContent) => {
     return comments;
 };
 exports.parseAIResponse = parseAIResponse;
-// Effect: Review a single chunk with repository context
-const reviewChunk = async (chunk, config, provider, apiKey, model) => {
+// Effect: Review a single chunk with repository context using secure credential management
+const reviewChunk = async (chunk, config, provider, model) => {
     // Always use repository context if available (simplified approach)
     const prompt = (0, exports.buildReviewPrompt)(config, chunk.content, chunk.repositoryContext);
     core.info(`🔗 Calling AI provider: ${provider} with model: ${model}`);
@@ -1269,9 +1448,34 @@ const reviewChunk = async (chunk, config, provider, apiKey, model) => {
         const fileCount = Object.keys(chunk.contextualContent).length;
         core.info(`📄 Including contextual content for ${fileCount} files`);
     }
-    const response = await (0, ai_api_1.callAIProvider)(provider, prompt, apiKey, model);
+    // Pre-request token estimation using provider-specific token counter with secure credentials
+    let estimatedInputTokens = 0;
+    try {
+        const tokenCounter = token_counter_1.TokenCounterFactory.create(provider);
+        const tokenResult = await tokenCounter.countTokens(prompt, model);
+        estimatedInputTokens = tokenResult.tokens;
+        core.info(`🔢 Estimated input tokens: ${estimatedInputTokens}`);
+    }
+    catch (error) {
+        core.warning(`Failed to get accurate token count, using fallback: ${error}`);
+        estimatedInputTokens = (0, review_1.countTokens)(prompt, model);
+    }
+    const response = await (0, ai_api_1.callAIProvider)(provider, prompt, model);
     core.info(`🤖 AI Response received: ${response.content.length} characters`);
     core.info(`📊 AI Response preview: "${response.content.substring(0, 200)}${response.content.length > 200 ? "..." : ""}"`);
+    // Log enhanced usage information if available
+    if (response.usage) {
+        core.info(`📊 Token usage - Input: ${response.usage.input_tokens}, Output: ${response.usage.output_tokens}`);
+        if (response.usage.cost) {
+            core.info(`💰 Direct cost: $${response.usage.cost}`);
+        }
+        if (response.usage.cached_tokens) {
+            core.info(`🗄️ Cached tokens: ${response.usage.cached_tokens}`);
+        }
+        if (response.usage.reasoning_tokens) {
+            core.info(`🧠 Reasoning tokens: ${response.usage.reasoning_tokens}`);
+        }
+    }
     const comments = (0, exports.parseAIResponse)(response.content);
     core.info(`💬 Parsed ${comments.length} comments from AI response`);
     const tokens = response.usage
@@ -1280,7 +1484,7 @@ const reviewChunk = async (chunk, config, provider, apiKey, model) => {
             output: response.usage.output_tokens,
         }
         : {
-            input: (0, review_1.countTokens)(prompt, model),
+            input: estimatedInputTokens || (0, review_1.countTokens)(prompt, model),
             output: (0, review_1.countTokens)(response.content, model),
         };
     return { comments, tokens };
@@ -1489,6 +1693,302 @@ exports.Logger = Logger;
 
 /***/ }),
 
+/***/ 2644:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.PricingServiceFactory = exports.PricingService = void 0;
+const types_1 = __nccwpck_require__(6118);
+const credential_manager_1 = __nccwpck_require__(2803);
+// Pricing Service for dynamic pricing and cost calculation
+class PricingService {
+    constructor(provider) {
+        this.provider = provider;
+        this.cache = {};
+        this.CACHE_TTL = 3600000; // 1 hour in milliseconds
+        this.credentialManager = credential_manager_1.CredentialManager.getInstance();
+    }
+    // Get model pricing with caching
+    async getModelPricing(model) {
+        const cacheKey = `${this.provider}:${model}`;
+        const cached = this.cache[cacheKey];
+        if (cached && Date.now() - cached.timestamp < cached.ttl) {
+            return cached.pricing;
+        }
+        let pricing;
+        try {
+            if (this.provider === "anthropic") {
+                pricing = await this.fetchAnthropicPricing(model);
+            }
+            else {
+                pricing = await this.fetchOpenRouterPricing(model);
+            }
+            // Cache the result
+            this.cache[cacheKey] = {
+                pricing,
+                timestamp: Date.now(),
+                ttl: this.CACHE_TTL,
+            };
+            return pricing;
+        }
+        catch (error) {
+            // If fetching fails, try to use cached data even if expired
+            if (cached) {
+                console.warn(`Using expired pricing data for ${model}: ${error}`);
+                return cached.pricing;
+            }
+            throw error;
+        }
+    }
+    // Fetch Anthropic model pricing
+    async fetchAnthropicPricing(model) {
+        try {
+            const apiKey = this.credentialManager.getApiKey('anthropic');
+            // Try to get pricing from Anthropic's models API
+            const response = await fetch("https://api.anthropic.com/v1/models", {
+                headers: {
+                    "x-api-key": apiKey,
+                    "anthropic-version": "2023-06-01",
+                },
+            });
+            if (response.ok) {
+                const data = (await response.json());
+                const modelData = data.data?.find((m) => m.id === model);
+                if (modelData?.pricing) {
+                    return {
+                        input: modelData.pricing.input_tokens_per_million / 1000000,
+                        output: modelData.pricing.output_tokens_per_million / 1000000,
+                    };
+                }
+            }
+        }
+        catch (error) {
+            console.warn(`Failed to fetch Anthropic pricing from API: ${error}`);
+        }
+        // Fallback to known pricing (updated as of 2024)
+        const knownPricing = {
+            "claude-3-5-sonnet-20241022": { input: 0.000003, output: 0.000015 },
+            "claude-3-5-sonnet-20240620": { input: 0.000003, output: 0.000015 },
+            "claude-3-5-haiku-20241022": { input: 0.000001, output: 0.000005 },
+            "claude-3-opus-20240229": { input: 0.000015, output: 0.000075 },
+            "claude-3-sonnet-20240229": { input: 0.000003, output: 0.000015 },
+            "claude-3-haiku-20240307": { input: 0.00000025, output: 0.00000125 },
+        };
+        const pricing = knownPricing[model];
+        if (!pricing) {
+            throw new types_1.AIProviderError(`Unknown Anthropic model pricing: ${model}`);
+        }
+        return pricing;
+    }
+    // Fetch OpenRouter model pricing
+    async fetchOpenRouterPricing(model) {
+        try {
+            const apiKey = this.credentialManager.getApiKey('openrouter');
+            const response = await fetch("https://openrouter.ai/api/v1/models", {
+                headers: {
+                    Authorization: `Bearer ${apiKey}`,
+                },
+            });
+            if (!response.ok) {
+                throw new types_1.AIProviderError(`OpenRouter models API error: ${response.statusText}`, response.status);
+            }
+            const data = (await response.json());
+            const modelData = data.data?.find((m) => m.id === model);
+            if (!modelData?.pricing) {
+                throw new types_1.AIProviderError(`Model not found or no pricing available: ${model}`);
+            }
+            return {
+                input: parseFloat(modelData.pricing.prompt) || 0,
+                output: parseFloat(modelData.pricing.completion) || 0,
+            };
+        }
+        catch (error) {
+            if (error instanceof types_1.AIProviderError) {
+                throw error;
+            }
+            throw new types_1.AIProviderError(`Failed to fetch OpenRouter pricing: ${error instanceof Error ? error.message : "Unknown error"}`);
+        }
+    }
+    // Calculate cost from usage data
+    async calculateCost(usage, model) {
+        // For OpenRouter, if cost is provided directly, use it
+        if (this.provider === "openrouter" &&
+            "cost" in usage &&
+            typeof usage.cost === "number") {
+            const directCost = usage.cost;
+            const pricing = await this.getModelPricing(model);
+            return {
+                inputCost: usage.input * pricing.input,
+                outputCost: usage.output * pricing.output,
+                totalCost: directCost,
+            };
+        }
+        // Standard calculation using pricing
+        const pricing = await this.getModelPricing(model);
+        const inputCost = usage.input * pricing.input;
+        const outputCost = usage.output * pricing.output;
+        return {
+            inputCost,
+            outputCost,
+            totalCost: inputCost + outputCost,
+        };
+    }
+    // Calculate cost from usage with cost data (for OpenRouter responses)
+    calculateCostFromUsageWithCost(usageWithCost, pricing) {
+        const inputCost = usageWithCost.input_tokens * pricing.input;
+        const outputCost = usageWithCost.output_tokens * pricing.output;
+        return {
+            inputCost,
+            outputCost,
+            totalCost: usageWithCost.cost || inputCost + outputCost,
+        };
+    }
+    // Clear expired cache entries
+    clearExpiredCache() {
+        const now = Date.now();
+        Object.keys(this.cache).forEach((key) => {
+            const entry = this.cache[key];
+            if (now - entry.timestamp >= entry.ttl) {
+                delete this.cache[key];
+            }
+        });
+    }
+}
+exports.PricingService = PricingService;
+// Factory for creating pricing services
+class PricingServiceFactory {
+    static create(provider) {
+        // Validate that credentials exist before creating the service
+        const credentialManager = credential_manager_1.CredentialManager.getInstance();
+        if (!credentialManager.hasApiKey(provider)) {
+            throw new types_1.AIProviderError(`API key not found for provider: ${provider}`);
+        }
+        return new PricingService(provider);
+    }
+}
+exports.PricingServiceFactory = PricingServiceFactory;
+//# sourceMappingURL=pricing-service.js.map
+
+/***/ }),
+
+/***/ 1690:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.TokenCounterFactory = exports.OpenRouterTokenCounter = exports.AnthropicTokenCounter = void 0;
+const types_1 = __nccwpck_require__(6118);
+const credential_manager_1 = __nccwpck_require__(2803);
+// Anthropic Token Counter using their Token Counting API
+class AnthropicTokenCounter {
+    constructor() {
+        this.credentialManager = credential_manager_1.CredentialManager.getInstance();
+    }
+    async countTokens(text, model) {
+        const apiKey = this.credentialManager.getApiKey('anthropic');
+        try {
+            const response = await fetch('https://api.anthropic.com/v1/messages/count_tokens', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': apiKey,
+                    'anthropic-version': '2023-06-01',
+                },
+                body: JSON.stringify({
+                    model: model,
+                    messages: [{ role: 'user', content: text }],
+                }),
+            });
+            if (!response.ok) {
+                throw new types_1.AIProviderError(`Anthropic token counting API error: ${response.statusText}`, response.status);
+            }
+            const data = await response.json();
+            return {
+                tokens: data.input_tokens,
+                provider: 'anthropic',
+                model: model,
+            };
+        }
+        catch (error) {
+            if (error instanceof types_1.AIProviderError) {
+                throw error;
+            }
+            throw new types_1.AIProviderError(`Failed to count tokens with Anthropic: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+}
+exports.AnthropicTokenCounter = AnthropicTokenCounter;
+// OpenRouter Token Counter using minimal completion requests
+class OpenRouterTokenCounter {
+    constructor() {
+        this.credentialManager = credential_manager_1.CredentialManager.getInstance();
+    }
+    async countTokens(text, model) {
+        const apiKey = this.credentialManager.getApiKey('openrouter');
+        try {
+            // Use a minimal completion request to get token count
+            const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`,
+                    'HTTP-Referer': 'https://github.com/gundurraga/bad-buggy',
+                    'X-Title': 'Bad Buggy Code Reviewer',
+                },
+                body: JSON.stringify({
+                    model: model,
+                    messages: [{ role: 'user', content: text }],
+                    max_tokens: 1, // Minimal completion to get token count
+                    usage: {
+                        include: true, // Enable usage accounting
+                    },
+                }),
+            });
+            if (!response.ok) {
+                throw new types_1.AIProviderError(`OpenRouter token counting API error: ${response.statusText}`, response.status);
+            }
+            const data = await response.json();
+            return {
+                tokens: data.usage?.prompt_tokens || 0,
+                provider: 'openrouter',
+                model: model,
+            };
+        }
+        catch (error) {
+            if (error instanceof types_1.AIProviderError) {
+                throw error;
+            }
+            throw new types_1.AIProviderError(`Failed to count tokens with OpenRouter: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+}
+exports.OpenRouterTokenCounter = OpenRouterTokenCounter;
+// Token Counter Factory with secure credential management
+class TokenCounterFactory {
+    static create(provider) {
+        // Validate that credentials exist before creating the counter
+        const credentialManager = credential_manager_1.CredentialManager.getInstance();
+        if (!credentialManager.hasApiKey(provider)) {
+            throw new types_1.AIProviderError(`API key not found for provider: ${provider}`);
+        }
+        switch (provider) {
+            case 'anthropic':
+                return new AnthropicTokenCounter();
+            case 'openrouter':
+                return new OpenRouterTokenCounter();
+            default:
+                throw new types_1.AIProviderError(`Unsupported provider for token counting: ${provider}`);
+        }
+    }
+}
+exports.TokenCounterFactory = TokenCounterFactory;
+//# sourceMappingURL=token-counter.js.map
+
+/***/ }),
+
 /***/ 7336:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -1658,7 +2158,7 @@ class ReviewWorkflow {
             logger_1.Logger.chunkReview(chunkNumber, chunks.length, chunk.content.length, chunk.fileChanges.map(f => f.filename));
             logger_1.Logger.aiProviderCall(chunkNumber, this.inputs.aiProvider, this.inputs.model);
             const startTime = Date.now();
-            const { comments, tokens } = await (0, ai_review_1.reviewChunk)(chunk, this.config, this.inputs.aiProvider, this.inputs.apiKey, this.inputs.model);
+            const { comments, tokens } = await (0, ai_review_1.reviewChunk)(chunk, this.config, this.inputs.aiProvider, this.inputs.model);
             const duration = Date.now() - startTime;
             logger_1.Logger.chunkResults(chunkNumber, comments.length, tokens.input, tokens.output, duration);
             logger_1.Logger.chunkIssues(chunkNumber, comments);
@@ -1728,9 +2228,17 @@ class ReviewWorkflow {
     }
     async reportCosts(totalTokens) {
         logger_1.Logger.costCalculation();
-        const cost = (0, cost_1.calculateCost)(this.inputs.model, totalTokens);
-        logger_1.Logger.costSummary(cost.totalCost, cost.inputCost, cost.outputCost);
-        logger_1.Logger.costBreakdown(totalTokens, cost.inputCost, cost.outputCost, cost.totalCost);
+        try {
+            // Use dynamic cost calculation with real-time pricing and secure credential management
+            const cost = await (0, cost_1.calculateCost)(totalTokens, this.inputs.model, this.inputs.aiProvider);
+            logger_1.Logger.costSummary(cost.totalCost, cost.inputCost, cost.outputCost);
+            logger_1.Logger.costBreakdown(totalTokens, cost.inputCost, cost.outputCost, cost.totalCost);
+        }
+        catch (error) {
+            console.error(`Cost calculation failed: ${error}`);
+            console.log(`Token usage - Input: ${totalTokens.input}, Output: ${totalTokens.output}`);
+            console.log('Ensure API keys are valid and models are supported by the provider.');
+        }
     }
 }
 exports.ReviewWorkflow = ReviewWorkflow;

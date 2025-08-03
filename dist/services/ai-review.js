@@ -37,6 +37,7 @@ exports.reviewChunk = exports.parseAIResponse = exports.buildReviewPrompt = void
 const core = __importStar(require("@actions/core"));
 const ai_api_1 = require("../effects/ai-api");
 const review_1 = require("../domains/review");
+const token_counter_1 = require("./token-counter");
 /**
  * Service for handling Bad Buggy-powered code review operations
  */
@@ -178,8 +179,8 @@ const parseAIResponse = (responseContent) => {
     return comments;
 };
 exports.parseAIResponse = parseAIResponse;
-// Effect: Review a single chunk with repository context
-const reviewChunk = async (chunk, config, provider, apiKey, model) => {
+// Effect: Review a single chunk with repository context using secure credential management
+const reviewChunk = async (chunk, config, provider, model) => {
     // Always use repository context if available (simplified approach)
     const prompt = (0, exports.buildReviewPrompt)(config, chunk.content, chunk.repositoryContext);
     core.info(`🔗 Calling AI provider: ${provider} with model: ${model}`);
@@ -191,9 +192,34 @@ const reviewChunk = async (chunk, config, provider, apiKey, model) => {
         const fileCount = Object.keys(chunk.contextualContent).length;
         core.info(`📄 Including contextual content for ${fileCount} files`);
     }
-    const response = await (0, ai_api_1.callAIProvider)(provider, prompt, apiKey, model);
+    // Pre-request token estimation using provider-specific token counter with secure credentials
+    let estimatedInputTokens = 0;
+    try {
+        const tokenCounter = token_counter_1.TokenCounterFactory.create(provider);
+        const tokenResult = await tokenCounter.countTokens(prompt, model);
+        estimatedInputTokens = tokenResult.tokens;
+        core.info(`🔢 Estimated input tokens: ${estimatedInputTokens}`);
+    }
+    catch (error) {
+        core.warning(`Failed to get accurate token count, using fallback: ${error}`);
+        estimatedInputTokens = (0, review_1.countTokens)(prompt, model);
+    }
+    const response = await (0, ai_api_1.callAIProvider)(provider, prompt, model);
     core.info(`🤖 AI Response received: ${response.content.length} characters`);
     core.info(`📊 AI Response preview: "${response.content.substring(0, 200)}${response.content.length > 200 ? "..." : ""}"`);
+    // Log enhanced usage information if available
+    if (response.usage) {
+        core.info(`📊 Token usage - Input: ${response.usage.input_tokens}, Output: ${response.usage.output_tokens}`);
+        if (response.usage.cost) {
+            core.info(`💰 Direct cost: $${response.usage.cost}`);
+        }
+        if (response.usage.cached_tokens) {
+            core.info(`🗄️ Cached tokens: ${response.usage.cached_tokens}`);
+        }
+        if (response.usage.reasoning_tokens) {
+            core.info(`🧠 Reasoning tokens: ${response.usage.reasoning_tokens}`);
+        }
+    }
     const comments = (0, exports.parseAIResponse)(response.content);
     core.info(`💬 Parsed ${comments.length} comments from AI response`);
     const tokens = response.usage
@@ -202,7 +228,7 @@ const reviewChunk = async (chunk, config, provider, apiKey, model) => {
             output: response.usage.output_tokens,
         }
         : {
-            input: (0, review_1.countTokens)(prompt, model),
+            input: estimatedInputTokens || (0, review_1.countTokens)(prompt, model),
             output: (0, review_1.countTokens)(response.content, model),
         };
     return { comments, tokens };

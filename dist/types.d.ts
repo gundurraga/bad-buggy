@@ -55,6 +55,12 @@ export interface AIProviderResponse {
     usage?: {
         input_tokens: number;
         output_tokens: number;
+        cost?: number;
+        cost_details?: {
+            upstream_inference_cost?: number;
+        };
+        cached_tokens?: number;
+        reasoning_tokens?: number;
     };
 }
 export interface TokenUsage {
@@ -65,11 +71,6 @@ export interface CostCalculation {
     inputCost: number;
     outputCost: number;
     totalCost: number;
-    pricing: ModelPricing;
-}
-export interface ModelPricing {
-    input: number;
-    output: number;
 }
 export interface ReviewComment {
     path: string;

@@ -2,8 +2,11 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.callAIProvider = exports.callOpenRouter = exports.callAnthropic = void 0;
 const types_1 = require("../types");
+const credential_manager_1 = require("../security/credential-manager");
 // Effect: Call Anthropic API
-const callAnthropic = async (prompt, apiKey, model) => {
+const callAnthropic = async (prompt, model) => {
+    const credentialManager = credential_manager_1.CredentialManager.getInstance();
+    const apiKey = credentialManager.getApiKey('anthropic');
     const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
@@ -32,7 +35,9 @@ const callAnthropic = async (prompt, apiKey, model) => {
 };
 exports.callAnthropic = callAnthropic;
 // Effect: Call OpenRouter API
-const callOpenRouter = async (prompt, apiKey, model) => {
+const callOpenRouter = async (prompt, model) => {
+    const credentialManager = credential_manager_1.CredentialManager.getInstance();
+    const apiKey = credentialManager.getApiKey('openrouter');
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -45,6 +50,9 @@ const callOpenRouter = async (prompt, apiKey, model) => {
             model,
             messages: [{ role: "user", content: prompt }],
             max_tokens: 4000,
+            usage: {
+                include: true, // Enable OpenRouter usage accounting
+            },
         }),
     });
     if (!response.ok) {
@@ -57,18 +65,22 @@ const callOpenRouter = async (prompt, apiKey, model) => {
         usage: {
             input_tokens: data.usage.prompt_tokens,
             output_tokens: data.usage.completion_tokens,
+            cost: data.usage.cost,
+            cost_details: data.usage.cost_details,
+            cached_tokens: data.usage.prompt_tokens_details?.cached_tokens,
+            reasoning_tokens: data.usage.completion_tokens_details?.reasoning_tokens,
         },
     };
 };
 exports.callOpenRouter = callOpenRouter;
 // Effect: Route to appropriate AI provider
-const callAIProvider = async (provider, prompt, apiKey, model) => {
+const callAIProvider = async (provider, prompt, model) => {
     try {
         switch (provider) {
             case "anthropic":
-                return await (0, exports.callAnthropic)(prompt, apiKey, model);
+                return await (0, exports.callAnthropic)(prompt, model);
             case "openrouter":
-                return await (0, exports.callOpenRouter)(prompt, apiKey, model);
+                return await (0, exports.callOpenRouter)(prompt, model);
             default:
                 throw new types_1.AIProviderError(`Unsupported AI provider: ${provider}`);
         }

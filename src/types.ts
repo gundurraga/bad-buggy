@@ -65,6 +65,12 @@ export interface AIProviderResponse {
   usage?: {
     input_tokens: number;
     output_tokens: number;
+    cost?: number; // OpenRouter provides direct cost
+    cost_details?: {
+      upstream_inference_cost?: number;
+    };
+    cached_tokens?: number; // OpenRouter cached tokens
+    reasoning_tokens?: number; // For models with reasoning
   };
 }
 
@@ -77,12 +83,6 @@ export interface CostCalculation {
   inputCost: number;
   outputCost: number;
   totalCost: number;
-  pricing: ModelPricing;
-}
-
-export interface ModelPricing {
-  input: number;
-  output: number;
 }
 
 // Review types

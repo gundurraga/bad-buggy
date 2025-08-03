@@ -8,6 +8,7 @@ import {
 } from "../types";
 import { callAIProvider } from "../effects/ai-api";
 import { countTokens } from "../domains/review";
+import { TokenCounterFactory } from "./token-counter";
 
 /**
  * Service for handling Bad Buggy-powered code review operations
@@ -25,7 +26,7 @@ export const buildReviewPrompt = (
   );
 
   // Add custom prompt if provided
-  const fullPrompt = config.custom_prompt 
+  const fullPrompt = config.custom_prompt
     ? `${basePrompt}\n\nAdditional instructions: ${config.custom_prompt}`
     : basePrompt;
 
@@ -114,8 +115,6 @@ ${chunkContent}
 Respond with ONLY a JSON array, no other text. Do not include explanations, thinking, or any text outside the JSON array. Start your response with [ and end with ].`;
 };
 
-
-
 // Helper function to validate severity
 const isValidSeverity = (
   severity: string
@@ -199,12 +198,11 @@ export const parseAIResponse = (responseContent: string): ReviewComment[] => {
   return comments;
 };
 
-// Effect: Review a single chunk with repository context
+// Effect: Review a single chunk with repository context using secure credential management
 export const reviewChunk = async (
   chunk: DiffChunk,
   config: ReviewConfig,
   provider: "anthropic" | "openrouter",
-  apiKey: string,
   model: string
 ): Promise<{ comments: ReviewComment[]; tokens: TokenUsage }> => {
   // Always use repository context if available (simplified approach)
@@ -224,7 +222,21 @@ export const reviewChunk = async (
     core.info(`📄 Including contextual content for ${fileCount} files`);
   }
 
-  const response = await callAIProvider(provider, prompt, apiKey, model);
+  // Pre-request token estimation using provider-specific token counter with secure credentials
+  let estimatedInputTokens = 0;
+  try {
+    const tokenCounter = TokenCounterFactory.create(provider);
+    const tokenResult = await tokenCounter.countTokens(prompt, model);
+    estimatedInputTokens = tokenResult.tokens;
+    core.info(`🔢 Estimated input tokens: ${estimatedInputTokens}`);
+  } catch (error) {
+    core.warning(
+      `Failed to get accurate token count, using fallback: ${error}`
+    );
+    estimatedInputTokens = countTokens(prompt, model);
+  }
+
+  const response = await callAIProvider(provider, prompt, model);
 
   core.info(`🤖 AI Response received: ${response.content.length} characters`);
   core.info(
@@ -232,6 +244,22 @@ export const reviewChunk = async (
       response.content.length > 200 ? "..." : ""
     }"`
   );
+
+  // Log enhanced usage information if available
+  if (response.usage) {
+    core.info(
+      `📊 Token usage - Input: ${response.usage.input_tokens}, Output: ${response.usage.output_tokens}`
+    );
+    if (response.usage.cost) {
+      core.info(`💰 Direct cost: $${response.usage.cost}`);
+    }
+    if (response.usage.cached_tokens) {
+      core.info(`🗄️ Cached tokens: ${response.usage.cached_tokens}`);
+    }
+    if (response.usage.reasoning_tokens) {
+      core.info(`🧠 Reasoning tokens: ${response.usage.reasoning_tokens}`);
+    }
+  }
 
   const comments = parseAIResponse(response.content);
   core.info(`💬 Parsed ${comments.length} comments from AI response`);
@@ -242,7 +270,7 @@ export const reviewChunk = async (
         output: response.usage.output_tokens,
       }
     : {
-        input: countTokens(prompt, model),
+        input: estimatedInputTokens || countTokens(prompt, model),
         output: countTokens(response.content, model),
       };
 

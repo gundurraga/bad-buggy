@@ -219,7 +219,6 @@ export class ReviewWorkflow {
         chunk,
         this.config,
         this.inputs.aiProvider,
-        this.inputs.apiKey,
         this.inputs.model
       );
       const duration = Date.now() - startTime;
@@ -329,8 +328,19 @@ export class ReviewWorkflow {
   async reportCosts(totalTokens: TokenUsage): Promise<void> {
     Logger.costCalculation();
     
-    const cost = calculateCost(this.inputs.model, totalTokens);
-    Logger.costSummary(cost.totalCost, cost.inputCost, cost.outputCost);
-    Logger.costBreakdown(totalTokens, cost.inputCost, cost.outputCost, cost.totalCost);
+    try {
+      // Use dynamic cost calculation with real-time pricing and secure credential management
+      const cost = await calculateCost(
+        totalTokens,
+        this.inputs.model,
+        this.inputs.aiProvider
+      );
+      Logger.costSummary(cost.totalCost, cost.inputCost, cost.outputCost);
+      Logger.costBreakdown(totalTokens, cost.inputCost, cost.outputCost, cost.totalCost);
+    } catch (error) {
+      console.error(`Cost calculation failed: ${error}`);
+      console.log(`Token usage - Input: ${totalTokens.input}, Output: ${totalTokens.output}`);
+      console.log('Ensure API keys are valid and models are supported by the provider.');
+    }
   }
 }

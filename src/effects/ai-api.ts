@@ -1,11 +1,13 @@
 import { AIProviderResponse, AIProviderError } from "../types";
+import { CredentialManager } from "../security/credential-manager";
 
 // Effect: Call Anthropic API
 export const callAnthropic = async (
   prompt: string,
-  apiKey: string,
   model: string
 ): Promise<AIProviderResponse> => {
+  const credentialManager = CredentialManager.getInstance();
+  const apiKey = credentialManager.getApiKey('anthropic');
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -41,9 +43,10 @@ export const callAnthropic = async (
 // Effect: Call OpenRouter API
 export const callOpenRouter = async (
   prompt: string,
-  apiKey: string,
   model: string
 ): Promise<AIProviderResponse> => {
+  const credentialManager = CredentialManager.getInstance();
+  const apiKey = credentialManager.getApiKey('openrouter');
   const response = await fetch(
     "https://openrouter.ai/api/v1/chat/completions",
     {
@@ -58,6 +61,9 @@ export const callOpenRouter = async (
         model,
         messages: [{ role: "user", content: prompt }],
         max_tokens: 4000,
+        usage: {
+          include: true, // Enable OpenRouter usage accounting
+        },
       }),
     }
   );
@@ -78,6 +84,17 @@ export const callOpenRouter = async (
     usage: {
       prompt_tokens: number;
       completion_tokens: number;
+      total_tokens: number;
+      cost?: number;
+      cost_details?: {
+        upstream_inference_cost?: number;
+      };
+      prompt_tokens_details?: {
+        cached_tokens?: number;
+      };
+      completion_tokens_details?: {
+        reasoning_tokens?: number;
+      };
     };
   }
 
@@ -87,6 +104,10 @@ export const callOpenRouter = async (
     usage: {
       input_tokens: data.usage.prompt_tokens,
       output_tokens: data.usage.completion_tokens,
+      cost: data.usage.cost,
+      cost_details: data.usage.cost_details,
+      cached_tokens: data.usage.prompt_tokens_details?.cached_tokens,
+      reasoning_tokens: data.usage.completion_tokens_details?.reasoning_tokens,
     },
   };
 };
@@ -95,15 +116,14 @@ export const callOpenRouter = async (
 export const callAIProvider = async (
   provider: "anthropic" | "openrouter",
   prompt: string,
-  apiKey: string,
   model: string
 ): Promise<AIProviderResponse> => {
   try {
     switch (provider) {
       case "anthropic":
-        return await callAnthropic(prompt, apiKey, model);
+        return await callAnthropic(prompt, model);
       case "openrouter":
-        return await callOpenRouter(prompt, apiKey, model);
+        return await callOpenRouter(prompt, model);
       default:
         throw new AIProviderError(`Unsupported AI provider: ${provider}`);
     }

@@ -90,7 +90,6 @@ export interface ReviewComment {
   path: string;
   line: number;
   body: string;
-  severity: 'critical' | 'major' | 'suggestion';
 }
 
 export interface DiffChunk {

@@ -213,17 +213,8 @@ export const processIncrementalDiff = (
 // Pure function to process and sort comments
 export const processComments = (
   comments: ReviewComment[],
-  config: ReviewConfig
+  _config: ReviewConfig
 ): ReviewComment[] => {
-  // Parse and sort comments
-  const sortedComments = [...comments];
-
-  // Always prioritize by severity (critical > major > suggestion)
-  const severityOrder = { critical: 0, major: 1, suggestion: 2 };
-  sortedComments.sort(
-    (a, b) => severityOrder[a.severity] - severityOrder[b.severity]
-  );
-
-  // Limit to max_comments
-  return sortedComments.slice(0, config.max_comments);
+  // Return comments as-is since we no longer use severity
+  return comments;
 };

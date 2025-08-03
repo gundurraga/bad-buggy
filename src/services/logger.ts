@@ -103,7 +103,7 @@ export class Logger {
     if (comments.length > 0) {
       core.info(`🔍 Chunk ${current} found issues:`);
       comments.forEach((comment, idx) => {
-        core.info(`  ${idx + 1}. [${comment.severity}] ${comment.path}:${comment.line} - ${comment.body.substring(0, 100)}${comment.body.length > 100 ? '...' : ''}`);
+        core.info(`  ${idx + 1}. ${comment.path}:${comment.line} - ${comment.body.substring(0, 100)}${comment.body.length > 100 ? '...' : ''}`);
       });
     } else {
       core.info(`✅ Chunk ${current}: No issues found`);
@@ -118,12 +118,7 @@ export class Logger {
     core.info('🔄 Processing and filtering comments...');
   }
 
-  static severityBreakdown(severityCounts: Record<string, number>): void {
-    core.info('📊 Raw comments by severity:');
-    Object.entries(severityCounts).forEach(([severity, count]) => {
-      core.info(`  ${severity}: ${count} comments`);
-    });
-  }
+
 
   static finalComments(finalCount: number, originalCount: number): void {
     core.info(`✨ Final comments after processing: ${finalCount} (filtered from ${originalCount})`);
@@ -132,7 +127,7 @@ export class Logger {
   static filteringReasons(maxComments: number): void {
     core.info('🔽 Comments filtered due to:');
     core.info(`  - Max comments limit: ${maxComments}`);
-    core.info(`  - Severity prioritization: enabled (always)`);
+
   }
 
   static postingReview(summaryLength: number, commentCount: number): void {

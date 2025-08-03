@@ -263,12 +263,8 @@ export class ReviewWorkflow {
   ): Promise<void> {
     Logger.commentProcessing();
     
-    // Log severity breakdown
-    const severityCounts = allComments.reduce((acc, comment) => {
-      acc[comment.severity] = (acc[comment.severity] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-    Logger.severityBreakdown(severityCounts);
+    // Log comment count
+    core.info(`Total comments generated: ${allComments.length}`);
     
     const finalComments = processComments(allComments, this.config);
     Logger.finalComments(finalComments.length, allComments.length);

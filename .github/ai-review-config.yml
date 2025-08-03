@@ -27,7 +27,7 @@ review_prompt: |
 
   COMMENT STRATEGY: Focus on issues that will impact functionality, security, or long-term maintainability. Provide educational context for complex issues. Be thorough in your analysis and provide actionable feedback.
 
-max_comments: 10
+max_comments: 5
 
 # Don't review these files
 ignore_patterns:

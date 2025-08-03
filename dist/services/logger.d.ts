@@ -27,7 +27,6 @@ export declare class Logger {
     static chunkIssues(current: number, comments: ReviewComment[]): void;
     static totalResults(commentCount: number, inputTokens: number, outputTokens: number): void;
     static commentProcessing(): void;
-    static severityBreakdown(severityCounts: Record<string, number>): void;
     static finalComments(finalCount: number, originalCount: number): void;
     static filteringReasons(maxComments: number): void;
     static postingReview(summaryLength: number, commentCount: number): void;

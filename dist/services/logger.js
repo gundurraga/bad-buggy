@@ -115,7 +115,7 @@ class Logger {
         if (comments.length > 0) {
             core.info(`🔍 Chunk ${current} found issues:`);
             comments.forEach((comment, idx) => {
-                core.info(`  ${idx + 1}. [${comment.severity}] ${comment.path}:${comment.line} - ${comment.body.substring(0, 100)}${comment.body.length > 100 ? '...' : ''}`);
+                core.info(`  ${idx + 1}. ${comment.path}:${comment.line} - ${comment.body.substring(0, 100)}${comment.body.length > 100 ? '...' : ''}`);
             });
         }
         else {
@@ -128,19 +128,12 @@ class Logger {
     static commentProcessing() {
         core.info('🔄 Processing and filtering comments...');
     }
-    static severityBreakdown(severityCounts) {
-        core.info('📊 Raw comments by severity:');
-        Object.entries(severityCounts).forEach(([severity, count]) => {
-            core.info(`  ${severity}: ${count} comments`);
-        });
-    }
     static finalComments(finalCount, originalCount) {
         core.info(`✨ Final comments after processing: ${finalCount} (filtered from ${originalCount})`);
     }
     static filteringReasons(maxComments) {
         core.info('🔽 Comments filtered due to:');
         core.info(`  - Max comments limit: ${maxComments}`);
-        core.info(`  - Severity prioritization: enabled (always)`);
     }
     static postingReview(summaryLength, commentCount) {
         core.info('📤 Posting review to GitHub...');

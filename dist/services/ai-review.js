@@ -41,10 +41,51 @@ const token_counter_1 = require("./token-counter");
 /**
  * Service for handling Bad Buggy-powered code review operations
  */
-// Pure function to build review prompt
-const buildReviewPrompt = (config, chunkContent) => {
-    const basePrompt = config.review_prompt.replace('{{DATE}}', new Date().toISOString().split('T')[0]);
-    return `${basePrompt}
+// Build review prompt with repository context and contextual content
+const buildReviewPrompt = (config, chunkContent, repositoryContext) => {
+    const basePrompt = config.review_prompt.replace("{{DATE}}", new Date().toISOString().split("T")[0]);
+    // Add custom prompt if provided
+    const fullPrompt = config.custom_prompt
+        ? `${basePrompt}\n\nAdditional instructions: ${config.custom_prompt}`
+        : basePrompt;
+    let contextSection = "";
+    // Always include repository context if available
+    if (repositoryContext) {
+        contextSection += "\n## Repository Context\n\n";
+        // Add project information
+        if (repositoryContext.packageInfo) {
+            contextSection += `### Project Information\n`;
+            contextSection += `- Name: ${repositoryContext.packageInfo.name || "Unknown"}\n`;
+            contextSection += `- Version: ${repositoryContext.packageInfo.version || "Unknown"}\n`;
+            if (repositoryContext.packageInfo.description) {
+                contextSection += `- Description: ${repositoryContext.packageInfo.description}\n`;
+            }
+            contextSection += "\n";
+        }
+        // Add repository structure overview
+        if (repositoryContext.structure) {
+            contextSection += `### Repository Structure\n`;
+            contextSection += `- Total Files: ${repositoryContext.structure.totalFiles}\n`;
+            const languages = Object.entries(repositoryContext.structure.languages)
+                .sort(([, a], [, b]) => b - a)
+                .slice(0, 5)
+                .map(([ext, count]) => `${ext} (${count})`)
+                .join(", ");
+            if (languages) {
+                contextSection += `- Main Languages: ${languages}\n`;
+            }
+            // Add key directories (limit to avoid token overflow)
+            const keyDirs = repositoryContext.structure.directories
+                .filter((dir) => !dir.includes("node_modules") && !dir.includes(".git"))
+                .slice(0, 15)
+                .join(", ");
+            if (keyDirs) {
+                contextSection += `- Key Directories: ${keyDirs}\n`;
+            }
+            contextSection += "\n";
+        }
+    }
+    return `${fullPrompt}${contextSection}
 
 Please review the following code changes and provide feedback as a JSON array of comments.
 Each comment should have:
@@ -52,7 +93,6 @@ Each comment should have:
 - line: the line number (from the diff)
 - end_line: (optional) the end line for multi-line comments
 - severity: "critical", "major", or "suggestion"
-- category: one of ${config.review_aspects.join(', ')}
 - comment: your feedback
 
 Examples of correct JSON responses:
@@ -61,8 +101,8 @@ Examples of correct JSON responses:
   {
     "file": "src/auth.js",
     "line": 45,
+    "end_line": 65,
     "severity": "critical",
-    "category": "security_vulnerabilities",
     "comment": "CRITICAL: SQL injection vulnerability. User input 'userInput' is directly concatenated into query without sanitization. IMPACT: Database compromise, data theft. IMMEDIATE ACTION: Use parameterized queries or ORM methods."
   },
   {
@@ -70,7 +110,6 @@ Examples of correct JSON responses:
     "line": 78,
     "end_line": 85,
     "severity": "major", 
-    "category": "bugs",
     "comment": "Race condition in payment processing. Multiple concurrent transactions can cause double-charging. IMPACT: Financial loss, customer complaints. IMMEDIATE ACTION: Add transaction locking or atomic operations."
   }
 ]
@@ -83,7 +122,7 @@ Respond with ONLY a JSON array, no other text. Do not include explanations, thin
 exports.buildReviewPrompt = buildReviewPrompt;
 // Helper function to validate severity
 const isValidSeverity = (severity) => {
-    return ['critical', 'major', 'suggestion'].includes(severity);
+    return ["critical", "major", "suggestion"].includes(severity);
 };
 // Pure function to parse AI response into ReviewComments
 const parseAIResponse = (responseContent) => {
@@ -94,14 +133,14 @@ const parseAIResponse = (responseContent) => {
         comments = parsedResponse.map((comment) => {
             if (!isValidSeverity(comment.severity)) {
                 core.warning(`Invalid severity '${comment.severity}' found, defaulting to 'suggestion'`);
-                comment.severity = 'suggestion';
+                comment.severity = "suggestion";
             }
             return {
                 path: comment.file,
                 line: comment.line,
                 end_line: comment.end_line,
                 severity: comment.severity,
-                body: comment.comment
+                body: comment.comment,
             };
         });
     }
@@ -114,25 +153,25 @@ const parseAIResponse = (responseContent) => {
                 comments = parsedResponse.map((comment) => {
                     if (!isValidSeverity(comment.severity)) {
                         core.warning(`Invalid severity '${comment.severity}' found, defaulting to 'suggestion'`);
-                        comment.severity = 'suggestion';
+                        comment.severity = "suggestion";
                     }
                     return {
                         path: comment.file,
                         line: comment.line,
                         end_line: comment.end_line,
                         severity: comment.severity,
-                        body: comment.comment
+                        body: comment.comment,
                     };
                 });
             }
             else {
-                core.warning('Failed to parse AI response as JSON - no JSON array found');
+                core.warning("Failed to parse AI response as JSON - no JSON array found");
                 core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
                 comments = [];
             }
         }
         catch (e2) {
-            core.warning('Failed to parse AI response as JSON');
+            core.warning("Failed to parse AI response as JSON");
             core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
             comments = [];
         }
@@ -140,11 +179,19 @@ const parseAIResponse = (responseContent) => {
     return comments;
 };
 exports.parseAIResponse = parseAIResponse;
-// Effect: Review a single chunk
+// Effect: Review a single chunk with repository context
 const reviewChunk = async (chunk, config, provider, apiKey, model) => {
-    const prompt = (0, exports.buildReviewPrompt)(config, chunk.content);
+    // Always use repository context if available (simplified approach)
+    const prompt = (0, exports.buildReviewPrompt)(config, chunk.content, chunk.repositoryContext);
     core.info(`🔗 Calling AI provider: ${provider} with model: ${model}`);
     core.info(`📝 Prompt length: ${prompt.length} characters`);
+    if (chunk.repositoryContext) {
+        core.info(`🏗️ Using repository context with structure`);
+    }
+    if (chunk.contextualContent) {
+        const fileCount = Object.keys(chunk.contextualContent).length;
+        core.info(`📄 Including contextual content for ${fileCount} files`);
+    }
     // Pre-request token estimation using provider-specific token counter
     let estimatedInputTokens = 0;
     try {
@@ -159,7 +206,7 @@ const reviewChunk = async (chunk, config, provider, apiKey, model) => {
     }
     const response = await (0, ai_api_1.callAIProvider)(provider, prompt, apiKey, model);
     core.info(`🤖 AI Response received: ${response.content.length} characters`);
-    core.info(`📊 AI Response preview: "${response.content.substring(0, 200)}${response.content.length > 200 ? '...' : ''}"`);
+    core.info(`📊 AI Response preview: "${response.content.substring(0, 200)}${response.content.length > 200 ? "..." : ""}"`);
     // Log enhanced usage information if available
     if (response.usage) {
         core.info(`📊 Token usage - Input: ${response.usage.input_tokens}, Output: ${response.usage.output_tokens}`);

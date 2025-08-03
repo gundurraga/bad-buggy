@@ -90,21 +90,7 @@ export async function performSecurityCheck(
     if (config.allowed_users && config.allowed_users.length > 0) {
       allowedUsers = config.allowed_users;
     }
-    // Option 2: Environment-based allowlist (for organizations)
-    else if (
-      config.allowed_users_env &&
-      process.env[config.allowed_users_env]
-    ) {
-      const envValue = process.env[config.allowed_users_env];
-      if (envValue) {
-        allowedUsers = envValue
-          .split(',')
-          .map((u) => u.trim());
-      }
-      core.info(
-        `Using environment-based allowlist: ${allowedUsers.length} users`
-      );
-    }
+    // No environment-based allowlist configured
 
     const isInAllowlist =
       allowedUsers.length > 0 ? allowedUsers.includes(triggeringUser) : true; // No allowlist = allow all collaborators

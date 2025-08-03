@@ -22,8 +22,9 @@ export declare class ReviewWorkflow {
         comments: ReviewComment[];
         tokens: TokenUsage;
         fileChanges: FileChange[];
+        incrementalMessage?: string;
     }>;
-    processAndPostComments(allComments: ReviewComment[], totalTokens: TokenUsage, modifiedFiles: string[], pr: PullRequest, triggeringUser: User, fileChanges: FileChange[]): Promise<void>;
+    processAndPostComments(allComments: ReviewComment[], totalTokens: TokenUsage, modifiedFiles: string[], pr: PullRequest, triggeringUser: User, fileChanges: FileChange[], incrementalMessage?: string): Promise<void>;
     reportCosts(totalTokens: TokenUsage): Promise<void>;
 }
 //# sourceMappingURL=workflow.d.ts.map

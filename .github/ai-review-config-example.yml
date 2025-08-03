@@ -1,0 +1,26 @@
+# Example AI Review Configuration (Simplified)
+# Copy this to .github/ai-review-config.yml and customize as needed
+
+# Maximum number of comments per review
+max_comments: 5
+
+# Files and patterns to ignore during review
+ignore_patterns:
+  - "*.lock"
+  - "dist/**"
+  - "build/**"
+  - "node_modules/**"
+  - "*.min.js"
+  - "*.map"
+
+# Users allowed to trigger reviews (empty = all users allowed)
+allowed_users: []
+
+# Custom prompt to add to the default review instructions
+# This will be appended to the base review prompt
+custom_prompt: |
+  Additional focus areas for this project:
+  - Follow our coding standards documented in CONTRIBUTING.md
+  - Ensure proper error handling and logging
+  - Validate input parameters and return types
+  - Consider accessibility in UI components

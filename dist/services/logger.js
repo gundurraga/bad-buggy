@@ -53,8 +53,8 @@ class Logger {
     static configLoading(configFile) {
         core.info(`📄 Loading configuration from ${configFile}...`);
     }
-    static configLoaded(maxComments, prioritizeBySeverity) {
-        core.info(`✅ Configuration loaded: max_comments=${maxComments}, prioritize_by_severity=${prioritizeBySeverity}`);
+    static configLoaded(maxComments) {
+        core.info(`✅ Configuration loaded: max_comments=${maxComments}`);
     }
     static configValidation() {
         core.info('✅ Configuration validation passed');
@@ -137,10 +137,10 @@ class Logger {
     static finalComments(finalCount, originalCount) {
         core.info(`✨ Final comments after processing: ${finalCount} (filtered from ${originalCount})`);
     }
-    static filteringReasons(maxComments, prioritizeBySeverity) {
+    static filteringReasons(maxComments) {
         core.info('🔽 Comments filtered due to:');
         core.info(`  - Max comments limit: ${maxComments}`);
-        core.info(`  - Severity prioritization: ${prioritizeBySeverity}`);
+        core.info(`  - Severity prioritization: enabled (always)`);
     }
     static postingReview(summaryLength, commentCount) {
         core.info('📤 Posting review to GitHub...');

@@ -38,45 +38,27 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.DEFAULT_CONFIG = void 0;
 // Default configuration for Bad Buggy code review
 exports.DEFAULT_CONFIG = {
-    review_prompt: `CONTEXT: Today is {{DATE}}. Review with current best practices in mind.
+    review_prompt: `You are an expert code reviewer. Please review the following code changes and provide constructive feedback.
 
-MANDATORY FIRST STEP - IDENTIFY MOST CRITICAL ISSUE:
-Priority 1: Functional failures (broken core functionality, data corruption risks, critical security vulnerabilities, memory leaks)
-Priority 2: System stability (poor error handling, race conditions, performance bottlenecks)  
-Priority 3: Maintainability blockers (architectural violations, tight coupling, code duplication)
+Focus on:
+- Code quality and best practices
+- Potential bugs or issues
+- Performance considerations
+- Security concerns
+- Maintainability and readability
 
-Output format: "MOST CRITICAL ISSUE: [Category] - [Description]. IMPACT: [What breaks if unfixed]. IMMEDIATE ACTION: [Specific fix needed]."
-
-EVALUATION FRAMEWORK:
-- Functional Correctness: Requirements met, edge cases handled, input validation, boundary conditions
-- Technical Implementation: Algorithm efficiency, architecture decisions, technology usage appropriately
-- Code Quality: Readability (clear naming, formatting), documentation (explains why not just what), comprehensive error handling
-- Testing & Reliability: Unit/integration tests, edge case coverage, proper mocking
-- Security & Safety: Input sanitization, authentication checks, no hardcoded secrets
-
-ANTIPATTERN DETECTION - Flag and educate on:
-- God objects/functions (200+ line functions doing everything)
-- Magic numbers/strings (use constants with descriptive names)
-- Poor error handling (silent failures, swallowing exceptions)
-- Tight coupling (changes requiring modifications across unrelated modules)
-- Code duplication (repeated logic that should be abstracted)
-
-COMMENT STRATEGY: Only add comments for genuinely critical issues that will impact functionality, security, or long-term maintainability. Skip minor style preferences unless they create real problems.`,
-    max_comments: 5,
-    prioritize_by_severity: true,
-    review_aspects: [
-        'bugs',
-        'security_vulnerabilities',
-        'performance_issues',
-        'code_quality',
-        'best_practices',
-        'architecture_suggestions',
-        'code_organization',
-        'code_readability',
-        'code_maintainability',
+Provide specific, actionable feedback with line numbers when applicable.`,
+    max_comments: 8,
+    ignore_patterns: [
+        '*.lock',
+        '*.log',
+        'node_modules/**',
+        'dist/**',
+        'build/**',
+        '*.min.js',
+        '*.min.css'
     ],
-    ignore_patterns: [],
-    allowed_users: [], // Empty array means allow all users
+    allowed_users: []
 };
 //# sourceMappingURL=default-config.js.map
 
@@ -181,12 +163,13 @@ exports.createReviewComment = createReviewComment;
 /***/ }),
 
 /***/ 7650:
-/***/ ((__unused_webpack_module, exports) => {
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.processComments = exports.chunkDiff = exports.shouldIgnoreFile = exports.countTokens = void 0;
+exports.processComments = exports.processIncrementalDiff = exports.chunkDiff = exports.shouldIgnoreFile = exports.countTokens = void 0;
+const github_api_1 = __nccwpck_require__(568);
 // Pure function to count tokens
 const countTokens = (text, model) => {
     let avgCharsPerToken = 3.5; // Default conservative estimate
@@ -214,40 +197,107 @@ const shouldIgnoreFile = (filename, config) => {
     });
 };
 exports.shouldIgnoreFile = shouldIgnoreFile;
-// Pure function to chunk diff content
-const chunkDiff = (diff, config) => {
+// Extract line numbers from diff patch
+const extractLineNumbers = (patch) => {
+    const ranges = [];
+    const lines = patch.split('\n');
+    for (const line of lines) {
+        const match = line.match(/^@@ -\d+,?\d* \+(\d+),?(\d*) @@/);
+        if (match) {
+            const start = parseInt(match[1], 10);
+            const count = match[2] ? parseInt(match[2], 10) : 1;
+            ranges.push({ start, end: start + count - 1 });
+        }
+    }
+    return ranges;
+};
+// Get contextual content (±100 lines around changes)
+const getContextualContent = async (file, octokit, context, sha) => {
+    if (file.status === 'removed' || !file.patch) {
+        return undefined;
+    }
+    try {
+        const fullContent = await (0, github_api_1.getFileContent)(octokit, context, file.filename, sha);
+        if (!fullContent)
+            return undefined;
+        const lines = fullContent.split('\n');
+        const ranges = extractLineNumbers(file.patch);
+        if (ranges.length === 0)
+            return undefined;
+        // Calculate the overall range with ±100 lines buffer
+        const minLine = Math.max(1, Math.min(...ranges.map(r => r.start)) - 100);
+        const maxLine = Math.min(lines.length, Math.max(...ranges.map(r => r.end)) + 100);
+        // For small files (<200 lines), include the entire file
+        if (lines.length <= 200) {
+            return fullContent;
+        }
+        // Extract the contextual lines
+        const contextualLines = lines.slice(minLine - 1, maxLine);
+        return contextualLines.join('\n');
+    }
+    catch (error) {
+        console.warn(`Could not get contextual content for ${file.filename}: ${error}`);
+        return undefined;
+    }
+};
+// Simplified chunking with ±100 lines contextual content
+const chunkDiff = async (diff, config, repositoryContext, octokit, context, sha) => {
     const chunks = [];
-    let currentChunk = { content: "", files: [], size: 0 };
+    let currentChunk = {
+        content: "",
+        fileChanges: [],
+        repositoryContext,
+        contextualContent: {}
+    };
     const maxChunkSize = 60000;
     // Filter out ignored files first
     const validFiles = diff.filter(file => !(0, exports.shouldIgnoreFile)(file.filename, config));
-    // Pre-calculate file content and sizes for better optimization
-    const fileData = validFiles.map(file => {
-        const content = `\n--- ${file.filename} (${file.status})\n${file.patch || ""}\n`;
-        return {
+    // Pre-calculate file content with contextual content
+    const fileData = [];
+    for (const file of validFiles) {
+        let content = `\n--- ${file.filename} (${file.status})\n`;
+        // Get contextual content (±100 lines) if we have the necessary parameters
+        if (octokit && context && sha) {
+            const contextualContent = await getContextualContent(file, octokit, context, sha);
+            if (contextualContent) {
+                file.contextualContent = contextualContent;
+                content += `\n### Contextual Content (±100 lines around changes):\n\`\`\`\n${contextualContent}\n\`\`\`\n\n`;
+            }
+        }
+        // Add diff content
+        content += `### Changes:\n${file.patch || ""}\n`;
+        fileData.push({
             file,
             content,
             size: content.length
-        };
-    });
+        });
+    }
     // Sort files by size (smallest first) to optimize packing
     fileData.sort((a, b) => a.size - b.size);
     for (const { file, content, size } of fileData) {
         // If this is the first file or adding it won't exceed the limit, add to current chunk
-        if (currentChunk.size === 0 || currentChunk.size + size <= maxChunkSize) {
+        if (currentChunk.fileChanges.length === 0 || currentChunk.content.length + size <= maxChunkSize) {
             currentChunk.content += content;
-            currentChunk.files.push(file.filename);
-            currentChunk.size += size;
+            currentChunk.fileChanges.push(file);
+            // Add to contextual content if available
+            if (file.contextualContent) {
+                currentChunk.contextualContent[file.filename] = file.contextualContent;
+            }
         }
         else {
             // Current chunk is full, start a new one
             if (currentChunk.content) {
                 chunks.push(currentChunk);
             }
+            const newContextualContent = {};
+            if (file.contextualContent) {
+                newContextualContent[file.filename] = file.contextualContent;
+            }
             currentChunk = {
                 content: content,
-                files: [file.filename],
-                size: size
+                fileChanges: [file],
+                repositoryContext,
+                contextualContent: newContextualContent
             };
         }
     }
@@ -258,14 +308,38 @@ const chunkDiff = (diff, config) => {
     return chunks;
 };
 exports.chunkDiff = chunkDiff;
+// Process incremental diff for review (always enabled now)
+const processIncrementalDiff = (incrementalDiff, config) => {
+    if (incrementalDiff.newCommits.length === 0) {
+        return {
+            shouldReview: false,
+            message: '🔄 **Incremental Review**: No new commits to review since last review.'
+        };
+    }
+    // Filter out ignored files before counting
+    const filesToReview = incrementalDiff.changedFiles.filter(file => !(0, exports.shouldIgnoreFile)(file.filename, config));
+    if (filesToReview.length === 0) {
+        return {
+            shouldReview: false,
+            message: `🔄 **Incremental Review**: ${incrementalDiff.newCommits.length} new commit(s) found, but no file changes to review after applying ignore patterns.`
+        };
+    }
+    const message = incrementalDiff.isIncremental
+        ? `🔄 **Incremental Review**: Reviewing ${incrementalDiff.newCommits.length} new commit(s) with ${filesToReview.length} files to review.`
+        : `🆕 **Initial Review**: Reviewing ${filesToReview.length} files to review in this PR.`;
+    return {
+        shouldReview: true,
+        message
+    };
+};
+exports.processIncrementalDiff = processIncrementalDiff;
 // Pure function to process and sort comments
 const processComments = (comments, config) => {
     // Parse and sort comments
     const sortedComments = [...comments];
-    if (config.prioritize_by_severity) {
-        const severityOrder = { critical: 0, major: 1, suggestion: 2 };
-        sortedComments.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
-    }
+    // Always prioritize by severity (critical > major > suggestion)
+    const severityOrder = { critical: 0, major: 1, suggestion: 2 };
+    sortedComments.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
     // Limit to max_comments
     return sortedComments.slice(0, config.max_comments);
 };
@@ -499,25 +573,62 @@ exports.loadConfigFromFile = loadConfigFromFile;
 /***/ }),
 
 /***/ 568:
-/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
 
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.postReview = exports.checkUserPermissions = exports.getPRDiff = void 0;
+exports.getRepositoryContext = exports.getPackageInfo = exports.getFileContent = exports.getRepositoryStructure = exports.getIncrementalDiff = exports.saveReviewState = exports.getReviewState = exports.getPRCommits = exports.postReview = exports.checkUserPermissions = exports.getPRDiff = void 0;
 const logger_1 = __nccwpck_require__(9741);
+const path = __importStar(__nccwpck_require__(1017));
 // Effect: Get PR diff from GitHub API
 const getPRDiff = async (octokit, context, pr) => {
     const { data: files } = await octokit.rest.pulls.listFiles({
         owner: context.repo.owner,
         repo: context.repo.repo,
         pull_number: pr.number,
-        per_page: 100
+        per_page: 100,
     });
-    return files.map(file => ({
+    return files.map((file) => ({
         filename: file.filename,
         status: file.status,
-        patch: file.patch
+        additions: file.additions || 0,
+        deletions: file.deletions || 0,
+        changes: file.changes || 0,
+        patch: file.patch,
     }));
 };
 exports.getPRDiff = getPRDiff;
@@ -527,12 +638,12 @@ const checkUserPermissions = async (octokit, owner, repo, username) => {
         const { data } = await octokit.rest.repos.getCollaboratorPermissionLevel({
             owner,
             repo,
-            username
+            username,
         });
         return data.permission;
     }
     catch (error) {
-        return 'none';
+        return "none";
     }
 };
 exports.checkUserPermissions = checkUserPermissions;
@@ -542,7 +653,7 @@ const getValidLinesFromPatch = (patch) => {
     const validLines = new Set();
     if (!patch)
         return validLines;
-    const lines = patch.split('\n');
+    const lines = patch.split("\n");
     let currentLine = 0;
     for (const line of lines) {
         // Parse hunk headers like @@ -1,4 +1,6 @@
@@ -552,13 +663,13 @@ const getValidLinesFromPatch = (patch) => {
             continue;
         }
         // Skip context lines (start with space) and deleted lines (start with -)
-        if (line.startsWith(' ') || line.startsWith('+')) {
+        if (line.startsWith(" ") || line.startsWith("+")) {
             if (currentLine > 0) {
                 validLines.add(currentLine);
             }
         }
         // Increment line number for context and added lines
-        if (line.startsWith(' ') || line.startsWith('+')) {
+        if (line.startsWith(" ") || line.startsWith("+")) {
             currentLine++;
         }
     }
@@ -574,7 +685,7 @@ const validateCommentsAgainstDiff = (comments, fileChanges) => {
         }
     }
     // Filter comments to only include those on valid lines
-    return comments.filter(comment => {
+    return comments.filter((comment) => {
         const validLines = fileValidLines.get(comment.path);
         if (!validLines || validLines.size === 0) {
             return false; // No valid lines for this file
@@ -589,25 +700,244 @@ const postReview = async (octokit, context, pr, comments, body, fileChanges) => 
         validatedComments = validateCommentsAgainstDiff(comments, fileChanges);
         if (validatedComments.length < comments.length) {
             const filteredCount = comments.length - validatedComments.length;
-            const filteredComments = comments.filter(c => !validatedComments.includes(c));
-            logger_1.Logger.commentFiltering(filteredCount, filteredComments.map(c => `${c.path}:${c.line}`));
+            const filteredComments = comments.filter((c) => !validatedComments.includes(c));
+            logger_1.Logger.commentFiltering(filteredCount, filteredComments.map((c) => `${c.path}:${c.line}`));
         }
     }
-    const reviewComments = validatedComments.map(comment => ({
+    const reviewComments = validatedComments.map((comment) => ({
         path: comment.path,
         line: comment.line,
-        body: comment.body
+        body: comment.body,
     }));
     await octokit.rest.pulls.createReview({
         owner: context.repo.owner,
         repo: context.repo.repo,
         pull_number: pr.number,
         body: body,
-        event: 'COMMENT',
-        comments: reviewComments
+        event: "COMMENT",
+        comments: reviewComments,
     });
 };
 exports.postReview = postReview;
+// Effect: Get commits for incremental review
+const getPRCommits = async (octokit, context, pr) => {
+    const { data: commits } = await octokit.rest.pulls.listCommits({
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+        pull_number: pr.number,
+        per_page: 100,
+    });
+    return commits.map((commit) => commit.sha);
+};
+exports.getPRCommits = getPRCommits;
+// Effect: Get review state from GitHub comments
+const getReviewState = async (octokit, context, pr) => {
+    try {
+        const { data: comments } = await octokit.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: pr.number,
+        });
+        // Look for our review state comment
+        const stateComment = comments.find((comment) => comment.body?.includes("<!-- BAD_BUGGY_REVIEW_STATE:") &&
+            comment.user?.login === "github-actions[bot]");
+        if (stateComment) {
+            const stateMatch = stateComment.body?.match(/<!-- BAD_BUGGY_REVIEW_STATE:(.+?)-->/s);
+            if (stateMatch) {
+                return JSON.parse(stateMatch[1]);
+            }
+        }
+        return null;
+    }
+    catch (error) {
+        logger_1.Logger.error(`Failed to get review state: ${error}`);
+        return null;
+    }
+};
+exports.getReviewState = getReviewState;
+// Effect: Save review state to GitHub comments
+const saveReviewState = async (octokit, context, pr, state) => {
+    try {
+        const stateJson = JSON.stringify(state);
+        const commentBody = `<!-- BAD_BUGGY_REVIEW_STATE:${stateJson}-->
+
+🤖 **Bad Buggy Review State Updated**
+
+Last reviewed commit: \`${state.lastReviewedSha.substring(0, 7)}\`
+Reviewed commits: ${state.reviewedCommits.length}
+Timestamp: ${state.timestamp}`;
+        // Check if we already have a state comment
+        const { data: comments } = await octokit.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: pr.number,
+        });
+        const existingStateComment = comments.find((comment) => comment.body?.includes("<!-- BAD_BUGGY_REVIEW_STATE:") &&
+            comment.user?.login === "github-actions[bot]");
+        if (existingStateComment) {
+            // Update existing comment
+            await octokit.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingStateComment.id,
+                body: commentBody,
+            });
+        }
+        else {
+            // Create new comment
+            await octokit.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body: commentBody,
+            });
+        }
+    }
+    catch (error) {
+        logger_1.Logger.error(`Failed to save review state: ${error}`);
+    }
+};
+exports.saveReviewState = saveReviewState;
+// Effect: Get incremental diff (only new commits)
+const getIncrementalDiff = async (octokit, context, pr, lastReviewedSha) => {
+    const allCommits = await (0, exports.getPRCommits)(octokit, context, pr);
+    if (!lastReviewedSha) {
+        // First review - get all changes
+        const fileChanges = await (0, exports.getPRDiff)(octokit, context, pr);
+        return {
+            newCommits: allCommits,
+            changedFiles: fileChanges,
+            isIncremental: false,
+        };
+    }
+    // Find new commits since last review
+    const lastReviewedIndex = allCommits.indexOf(lastReviewedSha);
+    const newCommits = lastReviewedIndex >= 0
+        ? allCommits.slice(lastReviewedIndex + 1)
+        : allCommits; // If we can't find the last reviewed commit, review all
+    if (newCommits.length === 0) {
+        return {
+            newCommits: [],
+            changedFiles: [],
+            isIncremental: true,
+        };
+    }
+    // Get diff for new commits only
+    const { data: comparison } = await octokit.rest.repos.compareCommits({
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+        base: lastReviewedSha,
+        head: pr.head.sha,
+    });
+    const changedFiles = comparison.files?.map((file) => ({
+        filename: file.filename,
+        status: file.status,
+        additions: file.additions || 0,
+        deletions: file.deletions || 0,
+        changes: file.changes || 0,
+        patch: file.patch,
+    })) || [];
+    return {
+        newCommits,
+        changedFiles,
+        isIncremental: true,
+    };
+};
+exports.getIncrementalDiff = getIncrementalDiff;
+// Effect: Get repository structure
+const getRepositoryStructure = async (octokit, context, pr) => {
+    try {
+        const { data: tree } = await octokit.rest.git.getTree({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            tree_sha: pr.head.sha,
+            recursive: "true",
+        });
+        const files = [];
+        const directories = [];
+        const languages = {};
+        tree.tree.forEach((item) => {
+            if (item.type === "tree") {
+                directories.push(item.path || "");
+            }
+            else if (item.type === "blob") {
+                const extension = path.extname(item.path || "").toLowerCase();
+                const fileInfo = {
+                    path: item.path || "",
+                    type: "file",
+                    extension: extension || undefined,
+                    size: item.size,
+                };
+                files.push(fileInfo);
+                // Count languages by extension
+                if (extension) {
+                    languages[extension] = (languages[extension] || 0) + 1;
+                }
+            }
+        });
+        return {
+            directories: directories.sort(),
+            files: files.sort((a, b) => a.path.localeCompare(b.path)),
+            totalFiles: files.length,
+            languages,
+        };
+    }
+    catch (error) {
+        logger_1.Logger.error(`Failed to get repository structure: ${error}`);
+        return {
+            directories: [],
+            files: [],
+            totalFiles: 0,
+            languages: {},
+        };
+    }
+};
+exports.getRepositoryStructure = getRepositoryStructure;
+// Effect: Get file content from GitHub
+const getFileContent = async (octokit, context, filePath, sha) => {
+    try {
+        const { data } = await octokit.rest.repos.getContent({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            path: filePath,
+            ref: sha,
+        });
+        if ("content" in data && data.content) {
+            return Buffer.from(data.content, "base64").toString("utf-8");
+        }
+        return null;
+    }
+    catch (error) {
+        logger_1.Logger.error(`Failed to get file content for ${filePath}: ${error}`);
+        return null;
+    }
+};
+exports.getFileContent = getFileContent;
+// Effect: Get package.json info
+const getPackageInfo = async (octokit, context, sha) => {
+    try {
+        const packageContent = await (0, exports.getFileContent)(octokit, context, "package.json", sha);
+        if (packageContent) {
+            return JSON.parse(packageContent);
+        }
+        return null;
+    }
+    catch (error) {
+        logger_1.Logger.error(`Failed to get package.json: ${error}`);
+        return null;
+    }
+};
+exports.getPackageInfo = getPackageInfo;
+// Effect: Get repository context (simplified)
+const getRepositoryContext = async (octokit, context, pr) => {
+    const structure = await (0, exports.getRepositoryStructure)(octokit, context, pr);
+    const packageInfo = await (0, exports.getPackageInfo)(octokit, context, pr.head.sha);
+    return {
+        structure,
+        packageInfo: packageInfo || undefined,
+    };
+};
+exports.getRepositoryContext = getRepositoryContext;
 //# sourceMappingURL=github-api.js.map
 
 /***/ }),
@@ -677,7 +1007,7 @@ const run = async () => {
         // Load and validate configuration
         logger_1.Logger.configLoading(inputs.configFile);
         const config = await (0, config_1.loadConfig)(inputs.configFile);
-        logger_1.Logger.configLoaded(config.max_comments, config.prioritize_by_severity);
+        logger_1.Logger.configLoaded(config.max_comments);
         // Initialize GitHub client and context
         const octokit = github.getOctokit(inputs.githubToken);
         const context = github.context;
@@ -690,11 +1020,15 @@ const run = async () => {
         const { pr, triggeringUser, repoOwner } = await workflow.validatePullRequest();
         const modifiedFiles = await workflow.performSecurityChecks(pr, triggeringUser, repoOwner);
         await workflow.checkUserPermissions(triggeringUser, repoOwner);
-        const { comments, tokens, fileChanges } = await workflow.processAndReviewDiff();
+        const { comments, tokens, fileChanges, incrementalMessage } = await workflow.processAndReviewDiff();
         if (comments.length === 0 && tokens.input === 0) {
+            // Handle case where there are no new changes to review (incremental)
+            if (incrementalMessage) {
+                core.info(incrementalMessage);
+            }
             return; // No files to review
         }
-        await workflow.processAndPostComments(comments, tokens, modifiedFiles, pr, triggeringUser, fileChanges);
+        await workflow.processAndPostComments(comments, tokens, modifiedFiles, pr, triggeringUser, fileChanges, incrementalMessage);
         await workflow.reportCosts(tokens);
         logger_1.Logger.completion();
     }
@@ -785,10 +1119,51 @@ const token_counter_1 = __nccwpck_require__(1690);
 /**
  * Service for handling Bad Buggy-powered code review operations
  */
-// Pure function to build review prompt
-const buildReviewPrompt = (config, chunkContent) => {
-    const basePrompt = config.review_prompt.replace('{{DATE}}', new Date().toISOString().split('T')[0]);
-    return `${basePrompt}
+// Build review prompt with repository context and contextual content
+const buildReviewPrompt = (config, chunkContent, repositoryContext) => {
+    const basePrompt = config.review_prompt.replace("{{DATE}}", new Date().toISOString().split("T")[0]);
+    // Add custom prompt if provided
+    const fullPrompt = config.custom_prompt
+        ? `${basePrompt}\n\nAdditional instructions: ${config.custom_prompt}`
+        : basePrompt;
+    let contextSection = "";
+    // Always include repository context if available
+    if (repositoryContext) {
+        contextSection += "\n## Repository Context\n\n";
+        // Add project information
+        if (repositoryContext.packageInfo) {
+            contextSection += `### Project Information\n`;
+            contextSection += `- Name: ${repositoryContext.packageInfo.name || "Unknown"}\n`;
+            contextSection += `- Version: ${repositoryContext.packageInfo.version || "Unknown"}\n`;
+            if (repositoryContext.packageInfo.description) {
+                contextSection += `- Description: ${repositoryContext.packageInfo.description}\n`;
+            }
+            contextSection += "\n";
+        }
+        // Add repository structure overview
+        if (repositoryContext.structure) {
+            contextSection += `### Repository Structure\n`;
+            contextSection += `- Total Files: ${repositoryContext.structure.totalFiles}\n`;
+            const languages = Object.entries(repositoryContext.structure.languages)
+                .sort(([, a], [, b]) => b - a)
+                .slice(0, 5)
+                .map(([ext, count]) => `${ext} (${count})`)
+                .join(", ");
+            if (languages) {
+                contextSection += `- Main Languages: ${languages}\n`;
+            }
+            // Add key directories (limit to avoid token overflow)
+            const keyDirs = repositoryContext.structure.directories
+                .filter((dir) => !dir.includes("node_modules") && !dir.includes(".git"))
+                .slice(0, 15)
+                .join(", ");
+            if (keyDirs) {
+                contextSection += `- Key Directories: ${keyDirs}\n`;
+            }
+            contextSection += "\n";
+        }
+    }
+    return `${fullPrompt}${contextSection}
 
 Please review the following code changes and provide feedback as a JSON array of comments.
 Each comment should have:
@@ -796,7 +1171,6 @@ Each comment should have:
 - line: the line number (from the diff)
 - end_line: (optional) the end line for multi-line comments
 - severity: "critical", "major", or "suggestion"
-- category: one of ${config.review_aspects.join(', ')}
 - comment: your feedback
 
 Examples of correct JSON responses:
@@ -805,8 +1179,8 @@ Examples of correct JSON responses:
   {
     "file": "src/auth.js",
     "line": 45,
+    "end_line": 65,
     "severity": "critical",
-    "category": "security_vulnerabilities",
     "comment": "CRITICAL: SQL injection vulnerability. User input 'userInput' is directly concatenated into query without sanitization. IMPACT: Database compromise, data theft. IMMEDIATE ACTION: Use parameterized queries or ORM methods."
   },
   {
@@ -814,7 +1188,6 @@ Examples of correct JSON responses:
     "line": 78,
     "end_line": 85,
     "severity": "major", 
-    "category": "bugs",
     "comment": "Race condition in payment processing. Multiple concurrent transactions can cause double-charging. IMPACT: Financial loss, customer complaints. IMMEDIATE ACTION: Add transaction locking or atomic operations."
   }
 ]
@@ -827,7 +1200,7 @@ Respond with ONLY a JSON array, no other text. Do not include explanations, thin
 exports.buildReviewPrompt = buildReviewPrompt;
 // Helper function to validate severity
 const isValidSeverity = (severity) => {
-    return ['critical', 'major', 'suggestion'].includes(severity);
+    return ["critical", "major", "suggestion"].includes(severity);
 };
 // Pure function to parse AI response into ReviewComments
 const parseAIResponse = (responseContent) => {
@@ -838,14 +1211,14 @@ const parseAIResponse = (responseContent) => {
         comments = parsedResponse.map((comment) => {
             if (!isValidSeverity(comment.severity)) {
                 core.warning(`Invalid severity '${comment.severity}' found, defaulting to 'suggestion'`);
-                comment.severity = 'suggestion';
+                comment.severity = "suggestion";
             }
             return {
                 path: comment.file,
                 line: comment.line,
                 end_line: comment.end_line,
                 severity: comment.severity,
-                body: comment.comment
+                body: comment.comment,
             };
         });
     }
@@ -858,25 +1231,25 @@ const parseAIResponse = (responseContent) => {
                 comments = parsedResponse.map((comment) => {
                     if (!isValidSeverity(comment.severity)) {
                         core.warning(`Invalid severity '${comment.severity}' found, defaulting to 'suggestion'`);
-                        comment.severity = 'suggestion';
+                        comment.severity = "suggestion";
                     }
                     return {
                         path: comment.file,
                         line: comment.line,
                         end_line: comment.end_line,
                         severity: comment.severity,
-                        body: comment.comment
+                        body: comment.comment,
                     };
                 });
             }
             else {
-                core.warning('Failed to parse AI response as JSON - no JSON array found');
+                core.warning("Failed to parse AI response as JSON - no JSON array found");
                 core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
                 comments = [];
             }
         }
         catch (e2) {
-            core.warning('Failed to parse AI response as JSON');
+            core.warning("Failed to parse AI response as JSON");
             core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
             comments = [];
         }
@@ -884,11 +1257,19 @@ const parseAIResponse = (responseContent) => {
     return comments;
 };
 exports.parseAIResponse = parseAIResponse;
-// Effect: Review a single chunk
+// Effect: Review a single chunk with repository context
 const reviewChunk = async (chunk, config, provider, apiKey, model) => {
-    const prompt = (0, exports.buildReviewPrompt)(config, chunk.content);
+    // Always use repository context if available (simplified approach)
+    const prompt = (0, exports.buildReviewPrompt)(config, chunk.content, chunk.repositoryContext);
     core.info(`🔗 Calling AI provider: ${provider} with model: ${model}`);
     core.info(`📝 Prompt length: ${prompt.length} characters`);
+    if (chunk.repositoryContext) {
+        core.info(`🏗️ Using repository context with structure`);
+    }
+    if (chunk.contextualContent) {
+        const fileCount = Object.keys(chunk.contextualContent).length;
+        core.info(`📄 Including contextual content for ${fileCount} files`);
+    }
     // Pre-request token estimation using provider-specific token counter
     let estimatedInputTokens = 0;
     try {
@@ -903,7 +1284,7 @@ const reviewChunk = async (chunk, config, provider, apiKey, model) => {
     }
     const response = await (0, ai_api_1.callAIProvider)(provider, prompt, apiKey, model);
     core.info(`🤖 AI Response received: ${response.content.length} characters`);
-    core.info(`📊 AI Response preview: "${response.content.substring(0, 200)}${response.content.length > 200 ? '...' : ''}"`);
+    core.info(`📊 AI Response preview: "${response.content.substring(0, 200)}${response.content.length > 200 ? "..." : ""}"`);
     // Log enhanced usage information if available
     if (response.usage) {
         core.info(`📊 Token usage - Input: ${response.usage.input_tokens}, Output: ${response.usage.output_tokens}`);
@@ -994,8 +1375,8 @@ class Logger {
     static configLoading(configFile) {
         core.info(`📄 Loading configuration from ${configFile}...`);
     }
-    static configLoaded(maxComments, prioritizeBySeverity) {
-        core.info(`✅ Configuration loaded: max_comments=${maxComments}, prioritize_by_severity=${prioritizeBySeverity}`);
+    static configLoaded(maxComments) {
+        core.info(`✅ Configuration loaded: max_comments=${maxComments}`);
     }
     static configValidation() {
         core.info('✅ Configuration validation passed');
@@ -1078,10 +1459,10 @@ class Logger {
     static finalComments(finalCount, originalCount) {
         core.info(`✨ Final comments after processing: ${finalCount} (filtered from ${originalCount})`);
     }
-    static filteringReasons(maxComments, prioritizeBySeverity) {
+    static filteringReasons(maxComments) {
         core.info('🔽 Comments filtered due to:');
         core.info(`  - Max comments limit: ${maxComments}`);
-        core.info(`  - Severity prioritization: ${prioritizeBySeverity}`);
+        core.info(`  - Severity prioritization: enabled (always)`);
     }
     static postingReview(summaryLength, commentCount) {
         core.info('📤 Posting review to GitHub...');
@@ -1421,12 +1802,46 @@ exports.TokenCounterFactory = TokenCounterFactory;
 /***/ }),
 
 /***/ 7336:
-/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
 
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.ReviewWorkflow = void 0;
+const core = __importStar(__nccwpck_require__(2186));
 const validation_1 = __nccwpck_require__(844);
 const security_1 = __nccwpck_require__(1022);
 const review_1 = __nccwpck_require__(7650);
@@ -1509,12 +1924,42 @@ class ReviewWorkflow {
         if (!pr) {
             throw new Error('Pull request not found in context');
         }
-        const diff = await (0, github_api_1.getPRDiff)(this.octokit, this.context, pr);
-        const chunks = (0, review_1.chunkDiff)(diff, this.config);
+        // Always handle incremental reviews (simplified approach)
+        const reviewState = await (0, github_api_1.getReviewState)(this.octokit, this.context, pr);
+        const incrementalDiff = await (0, github_api_1.getIncrementalDiff)(this.octokit, this.context, pr, reviewState?.lastReviewedSha);
+        const incrementalResult = (0, review_1.processIncrementalDiff)(incrementalDiff, this.config);
+        if (!incrementalResult.shouldReview) {
+            core.info(incrementalResult.message || 'No new changes to review');
+            return {
+                comments: [],
+                tokens: { input: 0, output: 0 },
+                fileChanges: incrementalDiff.changedFiles,
+                incrementalMessage: incrementalResult.message
+            };
+        }
+        const incrementalMessage = incrementalResult.message;
+        core.info(incrementalMessage || 'Processing incremental review');
+        // Always get repository context (simplified approach)
+        let repositoryContext;
+        try {
+            repositoryContext = await (0, github_api_1.getRepositoryContext)(this.octokit, this.context, pr);
+            core.info(`📁 Repository context gathered: ${repositoryContext.structure.totalFiles} files`);
+        }
+        catch (error) {
+            core.warning(`Failed to get repository context: ${error}`);
+            // Continue with basic diff review if context fails
+        }
+        // Always create chunks with contextual content (±100 lines strategy)
+        const chunks = await (0, review_1.chunkDiff)(incrementalDiff.changedFiles, this.config, repositoryContext, this.octokit, this.context, pr.head.sha);
         logger_1.Logger.chunksCreated(chunks.length);
         if (chunks.length === 0) {
             logger_1.Logger.noFilesToReview();
-            return { comments: [], tokens: { input: 0, output: 0 }, fileChanges: diff };
+            return {
+                comments: [],
+                tokens: { input: 0, output: 0 },
+                fileChanges: incrementalDiff.changedFiles,
+                incrementalMessage
+            };
         }
         logger_1.Logger.reviewStart();
         let allComments = [];
@@ -1522,7 +1967,7 @@ class ReviewWorkflow {
         for (let i = 0; i < chunks.length; i++) {
             const chunk = chunks[i];
             const chunkNumber = i + 1;
-            logger_1.Logger.chunkReview(chunkNumber, chunks.length, chunk.content.length, chunk.files);
+            logger_1.Logger.chunkReview(chunkNumber, chunks.length, chunk.content.length, chunk.fileChanges.map(f => f.filename));
             logger_1.Logger.aiProviderCall(chunkNumber, this.inputs.aiProvider, this.inputs.model);
             const startTime = Date.now();
             const { comments, tokens } = await (0, ai_review_1.reviewChunk)(chunk, this.config, this.inputs.aiProvider, this.inputs.apiKey, this.inputs.model);
@@ -1532,10 +1977,26 @@ class ReviewWorkflow {
             allComments = allComments.concat(comments);
             totalTokens = (0, cost_1.accumulateTokens)(totalTokens, tokens);
         }
+        // Always save review state for incremental reviews
+        if (incrementalDiff.newCommits.length > 0) {
+            const newReviewState = {
+                prNumber: this.context.payload.pull_request?.number || 0,
+                lastReviewedSha: pr.head.sha,
+                reviewedCommits: incrementalDiff.newCommits,
+                timestamp: new Date().toISOString()
+            };
+            await (0, github_api_1.saveReviewState)(this.octokit, this.context, pr, newReviewState);
+            core.info(`💾 Review state saved for commit: ${pr.head.sha.substring(0, 7)}`);
+        }
         logger_1.Logger.totalResults(allComments.length, totalTokens.input, totalTokens.output);
-        return { comments: allComments, tokens: totalTokens, fileChanges: diff };
+        return {
+            comments: allComments,
+            tokens: totalTokens,
+            fileChanges: incrementalDiff.changedFiles,
+            incrementalMessage
+        };
     }
-    async processAndPostComments(allComments, totalTokens, modifiedFiles, pr, triggeringUser, fileChanges) {
+    async processAndPostComments(allComments, totalTokens, modifiedFiles, pr, triggeringUser, fileChanges, incrementalMessage) {
         logger_1.Logger.commentProcessing();
         // Log severity breakdown
         const severityCounts = allComments.reduce((acc, comment) => {
@@ -1546,7 +2007,7 @@ class ReviewWorkflow {
         const finalComments = (0, review_1.processComments)(allComments, this.config);
         logger_1.Logger.finalComments(finalComments.length, allComments.length);
         if (finalComments.length !== allComments.length) {
-            logger_1.Logger.filteringReasons(this.config.max_comments, this.config.prioritize_by_severity);
+            logger_1.Logger.filteringReasons(this.config.max_comments);
         }
         // Prepare PR information for summary
         const prInfo = {
@@ -1557,7 +2018,11 @@ class ReviewWorkflow {
             additions: pr.additions || 0,
             deletions: pr.deletions || 0
         };
-        const reviewBody = (0, github_1.formatReviewBody)(this.inputs.model, totalTokens, finalComments.length, prInfo);
+        let reviewBody = (0, github_1.formatReviewBody)(this.inputs.model, totalTokens, finalComments.length, prInfo);
+        // Prepend incremental message if available
+        if (incrementalMessage) {
+            reviewBody = `${incrementalMessage}\n\n${reviewBody}`;
+        }
         if (finalComments.length > 0) {
             logger_1.Logger.postingReview(reviewBody.length, finalComments.length);
             const postStartTime = Date.now();
@@ -1646,14 +2111,7 @@ const validateConfig = (config) => {
     else if (config.max_comments > 20) {
         warnings.push('max_comments is high and may cause API rate limits');
     }
-    // Validate prioritize_by_severity
-    if (typeof config.prioritize_by_severity !== 'boolean') {
-        errors.push('prioritize_by_severity must be a boolean');
-    }
     // Validate arrays
-    if (!Array.isArray(config.review_aspects)) {
-        errors.push('review_aspects must be an array');
-    }
     if (!Array.isArray(config.ignore_patterns)) {
         errors.push('ignore_patterns must be an array');
     }

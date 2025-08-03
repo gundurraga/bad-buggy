@@ -1,7 +1,7 @@
 import * as core from '@actions/core';
 import * as github from '@actions/github';
 import { ActionInputs, ReviewConfig, TokenUsage, ReviewComment, PullRequest, User, FileChange, ReviewState, RepositoryContext } from '../types';
-import { validateInputs, validateConfig, validateAndThrow } from '../validation';
+import { validateInputs, validateConfig, validateAndThrow } from '../config';
 import { validateSecurity } from '../domains/security';
 import { chunkDiff, processComments, processIncrementalDiff } from '../domains/review';
 import { calculateCost, accumulateTokens } from '../domains/cost';

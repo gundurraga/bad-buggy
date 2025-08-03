@@ -2,40 +2,48 @@ require('./sourcemap-register.js');/******/ (() => { // webpackBootstrap
 /******/ 	var __webpack_modules__ = ({
 
 /***/ 1677:
-/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
 
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.loadConfig = exports.mergeConfig = exports.DEFAULT_CONFIG = void 0;
-const file_system_1 = __nccwpck_require__(1162);
-const default_config_1 = __nccwpck_require__(5853);
-Object.defineProperty(exports, "DEFAULT_CONFIG", ({ enumerable: true, get: function () { return default_config_1.DEFAULT_CONFIG; } }));
-// Pure function to merge configurations
-const mergeConfig = (defaultConfig, userConfig) => {
-    return {
-        ...defaultConfig,
-        ...userConfig
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
     };
-};
-exports.mergeConfig = mergeConfig;
-// Effect: Load and merge configuration
-const loadConfig = async (configFile) => {
-    const userConfig = await (0, file_system_1.loadConfigFromFile)(configFile);
-    return userConfig ? (0, exports.mergeConfig)(default_config_1.DEFAULT_CONFIG, userConfig) : default_config_1.DEFAULT_CONFIG;
-};
-exports.loadConfig = loadConfig;
-//# sourceMappingURL=config.js.map
-
-/***/ }),
-
-/***/ 5853:
-/***/ ((__unused_webpack_module, exports) => {
-
-"use strict";
-
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.DEFAULT_CONFIG = void 0;
+exports.loadConfig = exports.validateAndThrow = exports.validateInputs = exports.validateConfig = exports.mergeConfig = exports.DEFAULT_CONFIG = void 0;
+const types_1 = __nccwpck_require__(6118);
+const file_system_1 = __nccwpck_require__(1162);
+const core = __importStar(__nccwpck_require__(2186));
 // Default configuration for Bad Buggy code review
 exports.DEFAULT_CONFIG = {
     review_prompt: `You are an experienced code reviewer providing thoughtful, constructive feedback that helps developers grow.
@@ -96,7 +104,99 @@ Remember: You're not just reviewing code, you're helping a colleague become a be
     ],
     allowed_users: [],
 };
-//# sourceMappingURL=default-config.js.map
+// Pure function to merge configurations
+const mergeConfig = (defaultConfig, userConfig) => {
+    return {
+        ...defaultConfig,
+        ...userConfig
+    };
+};
+exports.mergeConfig = mergeConfig;
+// Pure function to validate configuration
+const validateConfig = (config) => {
+    const errors = [];
+    const warnings = [];
+    // Validate review_prompt
+    if (!config.review_prompt || typeof config.review_prompt !== 'string' || config.review_prompt.trim() === '') {
+        errors.push('review_prompt must be a non-empty string');
+    }
+    else if (config.review_prompt.length > 10000) {
+        warnings.push('review_prompt is very long and may cause API issues');
+    }
+    // Validate max_comments
+    if (typeof config.max_comments !== 'number' || config.max_comments <= 0) {
+        errors.push('max_comments must be a positive number');
+    }
+    else if (config.max_comments > 20) {
+        warnings.push('max_comments is high and may cause API rate limits');
+    }
+    // Validate arrays
+    if (!Array.isArray(config.ignore_patterns)) {
+        errors.push('ignore_patterns must be an array');
+    }
+    if (!Array.isArray(config.allowed_users)) {
+        errors.push('allowed_users must be an array');
+    }
+    // Log warnings
+    warnings.forEach(warning => core.warning(warning));
+    return {
+        isValid: errors.length === 0,
+        errors,
+        warnings
+    };
+};
+exports.validateConfig = validateConfig;
+// Pure function to validate inputs
+const validateInputs = (inputs) => {
+    const errors = [];
+    // Validate GitHub token
+    if (!inputs.githubToken || typeof inputs.githubToken !== 'string') {
+        errors.push('GitHub token is required');
+    }
+    else if (!inputs.githubToken.startsWith('ghp_') && !inputs.githubToken.startsWith('ghs_') && !inputs.githubToken.startsWith('github_pat_')) {
+        errors.push('GitHub token format appears invalid');
+    }
+    // Validate AI provider
+    if (!['anthropic', 'openrouter'].includes(inputs.aiProvider)) {
+        errors.push('AI provider must be either "anthropic" or "openrouter"');
+    }
+    // Validate API key
+    if (!inputs.apiKey || typeof inputs.apiKey !== 'string') {
+        errors.push('API key is required');
+    }
+    else {
+        // Basic format validation based on provider
+        if (inputs.aiProvider === 'anthropic' && !inputs.apiKey.startsWith('sk-ant-')) {
+            errors.push('Anthropic API key format appears invalid (should start with sk-ant-)');
+        }
+        else if (inputs.aiProvider === 'openrouter' && !inputs.apiKey.startsWith('sk-or-')) {
+            errors.push('OpenRouter API key format appears invalid (should start with sk-or-)');
+        }
+    }
+    // Validate model
+    if (!inputs.model || typeof inputs.model !== 'string') {
+        errors.push('Model is required');
+    }
+    return {
+        isValid: errors.length === 0,
+        errors
+    };
+};
+exports.validateInputs = validateInputs;
+// Effect: Validate and throw if invalid
+const validateAndThrow = (validation, errorType) => {
+    if (!validation.isValid) {
+        throw new types_1.ConfigValidationError(`${errorType}: ${validation.errors.join(', ')}`);
+    }
+};
+exports.validateAndThrow = validateAndThrow;
+// Effect: Load and merge configuration
+const loadConfig = async (configFile) => {
+    const userConfig = await (0, file_system_1.loadConfigFromFile)(configFile);
+    return userConfig ? (0, exports.mergeConfig)(exports.DEFAULT_CONFIG, userConfig) : exports.DEFAULT_CONFIG;
+};
+exports.loadConfig = loadConfig;
+//# sourceMappingURL=config.js.map
 
 /***/ }),
 
@@ -1068,6 +1168,31 @@ const getActionInputs = () => {
         configFile: core.getInput("config-file") || ".github/ai-review-config.yml",
     };
 };
+// Centralized error handling
+const handleError = (error, errorMessage) => {
+    // Classify error types for better debugging
+    if (error instanceof Error) {
+        if (error.message.includes('validation') || error.name === 'ConfigValidationError') {
+            core.setFailed(`Configuration Error: ${errorMessage}`);
+        }
+        else if (error.message.includes('permission') || error.message.includes('sufficient permissions')) {
+            core.setFailed(`Permission Error: ${errorMessage}`);
+        }
+        else if (error.message.includes('API') || error.name === 'AIProviderError') {
+            core.setFailed(`API Error: ${errorMessage}`);
+        }
+        else if (error.message.includes('This action can only be run on pull requests')) {
+            core.setFailed(`Context Error: ${errorMessage}`);
+        }
+        else {
+            core.setFailed(`Unexpected Error: ${errorMessage}`);
+        }
+    }
+    else {
+        core.setFailed(`Unknown Error: ${errorMessage}`);
+    }
+    logger_1.Logger.error(errorMessage);
+};
 // Main execution function
 const run = async () => {
     try {
@@ -1108,38 +1233,16 @@ const run = async () => {
     }
     catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        // Classify error types for better debugging
-        if (error instanceof Error) {
-            if (error.message.includes('validation')) {
-                core.setFailed(`Configuration Error: ${errorMessage}`);
-                process.exit(1);
-            }
-            else if (error.message.includes('permission')) {
-                core.setFailed(`Permission Error: ${errorMessage}`);
-                process.exit(2);
-            }
-            else if (error.message.includes('API')) {
-                core.setFailed(`API Error: ${errorMessage}`);
-                process.exit(3);
-            }
-            else {
-                core.setFailed(`Unexpected Error: ${errorMessage}`);
-                process.exit(4);
-            }
-        }
-        else {
-            core.setFailed(`Unknown Error: ${errorMessage}`);
-            process.exit(5);
-        }
-        logger_1.Logger.error(errorMessage);
+        handleError(error, errorMessage);
     }
 };
 exports.run = run;
 // Execute if this is the main module
 if (require.main === require.cache[eval('__filename')]) {
     (0, exports.run)().catch((error) => {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        core.setFailed(`Fatal error during execution: ${errorMessage}`);
         console.error('Fatal error during execution:', error);
-        process.exit(6);
     });
 }
 //# sourceMappingURL=main.js.map
@@ -2113,7 +2216,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.ReviewWorkflow = void 0;
 const core = __importStar(__nccwpck_require__(2186));
-const validation_1 = __nccwpck_require__(844);
+const config_1 = __nccwpck_require__(1677);
 const security_1 = __nccwpck_require__(1022);
 const review_1 = __nccwpck_require__(7650);
 const cost_1 = __nccwpck_require__(4952);
@@ -2140,13 +2243,13 @@ class ReviewWorkflow {
         this.config = config;
     }
     async validateInputs() {
-        const inputValidation = (0, validation_1.validateInputs)(this.inputs);
-        (0, validation_1.validateAndThrow)(inputValidation, 'Input validation failed');
+        const inputValidation = (0, config_1.validateInputs)(this.inputs);
+        (0, config_1.validateAndThrow)(inputValidation, 'Input validation failed');
         logger_1.Logger.inputValidation();
     }
     async validateConfig() {
-        const configValidation = (0, validation_1.validateConfig)(this.config);
-        (0, validation_1.validateAndThrow)(configValidation, 'Configuration validation failed');
+        const configValidation = (0, config_1.validateConfig)(this.config);
+        (0, config_1.validateAndThrow)(configValidation, 'Configuration validation failed');
         logger_1.Logger.configValidation();
     }
     async validatePullRequest() {
@@ -2364,94 +2467,6 @@ class AIProviderError extends Error {
 }
 exports.AIProviderError = AIProviderError;
 //# sourceMappingURL=types.js.map
-
-/***/ }),
-
-/***/ 844:
-/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
-
-"use strict";
-
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.validateAndThrow = exports.validateInputs = exports.validateConfig = void 0;
-const types_1 = __nccwpck_require__(6118);
-// Pure function to validate configuration
-const validateConfig = (config) => {
-    const errors = [];
-    const warnings = [];
-    // Validate review_prompt
-    if (!config.review_prompt || typeof config.review_prompt !== 'string' || config.review_prompt.trim() === '') {
-        errors.push('review_prompt must be a non-empty string');
-    }
-    else if (config.review_prompt.length > 10000) {
-        warnings.push('review_prompt is very long and may cause API issues');
-    }
-    // Validate max_comments
-    if (typeof config.max_comments !== 'number' || config.max_comments <= 0) {
-        errors.push('max_comments must be a positive number');
-    }
-    else if (config.max_comments > 20) {
-        warnings.push('max_comments is high and may cause API rate limits');
-    }
-    // Validate arrays
-    if (!Array.isArray(config.ignore_patterns)) {
-        errors.push('ignore_patterns must be an array');
-    }
-    if (!Array.isArray(config.allowed_users)) {
-        errors.push('allowed_users must be an array');
-    }
-    return {
-        isValid: errors.length === 0,
-        errors,
-        warnings
-    };
-};
-exports.validateConfig = validateConfig;
-// Pure function to validate inputs
-const validateInputs = (inputs) => {
-    const errors = [];
-    // Validate GitHub token
-    if (!inputs.githubToken || typeof inputs.githubToken !== 'string') {
-        errors.push('GitHub token is required');
-    }
-    else if (!inputs.githubToken.startsWith('ghp_') && !inputs.githubToken.startsWith('ghs_') && !inputs.githubToken.startsWith('github_pat_')) {
-        errors.push('GitHub token format appears invalid');
-    }
-    // Validate AI provider
-    if (!['anthropic', 'openrouter'].includes(inputs.aiProvider)) {
-        errors.push('AI provider must be either "anthropic" or "openrouter"');
-    }
-    // Validate API key
-    if (!inputs.apiKey || typeof inputs.apiKey !== 'string') {
-        errors.push('API key is required');
-    }
-    else {
-        // Basic format validation based on provider
-        if (inputs.aiProvider === 'anthropic' && !inputs.apiKey.startsWith('sk-ant-')) {
-            errors.push('Anthropic API key format appears invalid (should start with sk-ant-)');
-        }
-        else if (inputs.aiProvider === 'openrouter' && !inputs.apiKey.startsWith('sk-or-')) {
-            errors.push('OpenRouter API key format appears invalid (should start with sk-or-)');
-        }
-    }
-    // Validate model
-    if (!inputs.model || typeof inputs.model !== 'string') {
-        errors.push('Model is required');
-    }
-    return {
-        isValid: errors.length === 0,
-        errors
-    };
-};
-exports.validateInputs = validateInputs;
-// Effect: Validate and throw if invalid
-const validateAndThrow = (validation, errorType) => {
-    if (!validation.isValid) {
-        throw new types_1.ConfigValidationError(`${errorType}: ${validation.errors.join(', ')}`);
-    }
-};
-exports.validateAndThrow = validateAndThrow;
-//# sourceMappingURL=validation.js.map
 
 /***/ }),
 

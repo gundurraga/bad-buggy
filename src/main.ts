@@ -19,7 +19,27 @@ const getActionInputs = (): ActionInputs => {
   };
 };
 
-
+// Centralized error handling
+const handleError = (error: unknown, errorMessage: string): void => {
+  // Classify error types for better debugging
+  if (error instanceof Error) {
+    if (error.message.includes('validation') || error.name === 'ConfigValidationError') {
+      core.setFailed(`Configuration Error: ${errorMessage}`);
+    } else if (error.message.includes('permission') || error.message.includes('sufficient permissions')) {
+      core.setFailed(`Permission Error: ${errorMessage}`);
+    } else if (error.message.includes('API') || error.name === 'AIProviderError') {
+      core.setFailed(`API Error: ${errorMessage}`);
+    } else if (error.message.includes('This action can only be run on pull requests')) {
+      core.setFailed(`Context Error: ${errorMessage}`);
+    } else {
+      core.setFailed(`Unexpected Error: ${errorMessage}`);
+    }
+  } else {
+    core.setFailed(`Unknown Error: ${errorMessage}`);
+  }
+  
+  Logger.error(errorMessage);
+};
 
 // Main execution function
 export const run = async (): Promise<void> => {
@@ -71,35 +91,15 @@ export const run = async (): Promise<void> => {
     Logger.completion();
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    
-    // Classify error types for better debugging
-    if (error instanceof Error) {
-      if (error.message.includes('validation')) {
-        core.setFailed(`Configuration Error: ${errorMessage}`);
-        process.exit(1);
-      } else if (error.message.includes('permission')) {
-        core.setFailed(`Permission Error: ${errorMessage}`);
-        process.exit(2);
-      } else if (error.message.includes('API')) {
-        core.setFailed(`API Error: ${errorMessage}`);
-        process.exit(3);
-      } else {
-        core.setFailed(`Unexpected Error: ${errorMessage}`);
-        process.exit(4);
-      }
-    } else {
-      core.setFailed(`Unknown Error: ${errorMessage}`);
-      process.exit(5);
-    }
-    
-    Logger.error(errorMessage);
+    handleError(error, errorMessage);
   }
 };
 
 // Execute if this is the main module
 if (require.main === module) {
   run().catch((error) => {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    core.setFailed(`Fatal error during execution: ${errorMessage}`);
     console.error('Fatal error during execution:', error);
-    process.exit(6);
   });
 }

@@ -35,7 +35,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ReviewWorkflow = void 0;
 const core = __importStar(require("@actions/core"));
-const validation_1 = require("../validation");
+const config_1 = require("../config");
 const security_1 = require("../domains/security");
 const review_1 = require("../domains/review");
 const cost_1 = require("../domains/cost");
@@ -62,13 +62,13 @@ class ReviewWorkflow {
         this.config = config;
     }
     async validateInputs() {
-        const inputValidation = (0, validation_1.validateInputs)(this.inputs);
-        (0, validation_1.validateAndThrow)(inputValidation, 'Input validation failed');
+        const inputValidation = (0, config_1.validateInputs)(this.inputs);
+        (0, config_1.validateAndThrow)(inputValidation, 'Input validation failed');
         logger_1.Logger.inputValidation();
     }
     async validateConfig() {
-        const configValidation = (0, validation_1.validateConfig)(this.config);
-        (0, validation_1.validateAndThrow)(configValidation, 'Configuration validation failed');
+        const configValidation = (0, config_1.validateConfig)(this.config);
+        (0, config_1.validateAndThrow)(configValidation, 'Configuration validation failed');
         logger_1.Logger.configValidation();
     }
     async validatePullRequest() {

@@ -1,17 +1,22 @@
 # 🐰⚡ Bad Buggy
 
-A simple, cost-effective GitHub Action that uses AI to review and comment your pull requests. Get instant feedback with transparent cost tracking.
+**The smartest GitHub Action for AI-powered code reviews**
 
-## What it does
+Get instant, educational feedback from Bad Buggy with transparent cost tracking and lightning-fast performance.
 
-- 🐰⚡ **Bad Buggy code reviews** using Claude models
-- 💰 **Transparent cost tracking** - see exactly what each review costs
-- 🎯 **Smart commenting** - focuses on critical issues first
-- 🔧 **Easy setup** - just add a workflow file
+## ✨ What makes Bad Buggy special
 
-## Quick Setup
+- 🎓 **Educational reviews** - Learn while you code with detailed explanations
+- 💰 **Real-time cost tracking** - See exactly what each review costs in PR comments
+- 🚀 **Lightning fast** - Parallel processing for maximum speed
+- 💬 **Smart commenting** - Both line-level and file-level insights
+- 🔄 **Incremental reviews** - Only reviews new changes, not entire PR
+- 🎯 **Quality focused** - Max 5 impactful comments per review
+- 🛡️ **Security first** - Validates permissions and handles credentials safely
 
-### 1. Add the workflow
+## 🚀 Quick Setup (2 minutes)
+
+### 1. Add the workflow file
 
 Create `.github/workflows/ai-review.yml`:
 
@@ -24,76 +29,73 @@ on:
 jobs:
   review:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: AI Review
+      - name: Bad Buggy Code Review
         uses: gundurraga/bad-buggy@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          ai-provider: "anthropic" # or "openrouter"
-          api-key: ${{ secrets.ANTHROPIC_API_KEY }} # or OPENROUTER_API_KEY
-          model: "claude-sonnet-4-20250514"
+          ai-provider: "openrouter" # or "anthropic"
+          api-key: ${{ secrets.OPENROUTER_API_KEY }} # or ${{ secrets.ANTHROPIC_API_KEY }}
+          model: "anthropic/claude-sonnet-4-20250514" # OpenRouter format, or just "claude-sonnet-4-20250514" for Anthropic
 ```
 
-### 2. Set repository permissions
+### 2. Add your API key
 
-Go to **Settings → Actions → General**:
+Go to **Settings → Secrets and variables → Actions** and add:
 
-- Select **"Read and write permissions"**
-- Check **"Allow GitHub Actions to create and approve pull requests"**
-- Click **Save**
+- `ANTHROPIC_API_KEY` → Get yours at [console.anthropic.com](https://console.anthropic.com)
+- Or `OPENROUTER_API_KEY` → Get yours at [openrouter.ai](https://openrouter.ai) (Access to 400+ models)
 
-### 3. Add your API key
+### 3. Done! 🎉
 
-Go to **Settings → Secrets and variables → Actions** and add one of:
+Your next pull request will get a Bad Buggy review with cost tracking right in the comments.
 
-- `ANTHROPIC_API_KEY` (get it from [console.anthropic.com](https://console.anthropic.com))
-- `OPENROUTER_API_KEY` (get it from [openrouter.ai](https://openrouter.ai))
+## 💬 What you get
 
-That's it! Bad Buggy will now review your pull requests.
+**📊 Cost tracking right in your PR:**
 
-## Example Output
+```markdown
+## 🐰⚡ Bad Buggy
 
-When a review is complete, you'll see a comment like this:
+### 🔍 Review Details
 
-```
-Bad Buggy review completed with 5 comments
-
-Review Cost:
-Model: claude-sonnet-4-20250514
-Total cost: $0.0469 (equal to 21 reviews per dollar)
-Tokens: 7,858 input, 1,556 output
+**Model:** claude-sonnet-4-20250514
+**Total cost:** $0.0034 (equal to 294 reviews per dollar)
+**Tokens:** 8,424 (7,858 input, 566 output)
+**Comments:** 3
 ```
 
-Plus individual comments on specific lines of your code pointing out issues and suggestions.
+**🎯 Smart code insights:**
 
-## Thoughtful Code Review Approach
+- **Line-level comments** - Specific suggestions on exact lines
+- **File-level comments** - Overall architecture and design feedback
+- **Educational explanations** - Learn the "why" behind each suggestion
+- **Actionable solutions** - Code examples and specific improvements
 
-Bad Buggy provides comprehensive, educational code reviews that help developers grow. Here's what makes it different:
+## 🧠 AI-Powered Code Intelligence
 
-### 🎯 **Focused & Impactful**
-- **Maximum 3 comments per review** - Quality over quantity
-- **Teaches while reviewing** - Explains the "why" behind suggestions
-- **Prioritizes architectural thinking** - Focuses on design patterns, maintainability, and long-term impact
-- **Rich markdown formatting** - Uses code blocks, headers, and formatting for clarity
-- **Comprehensive explanations** - Comments are as long as needed to fully teach the concept
+### **What Bad Buggy reviews:**
 
-### 🧠 **What It Looks For**
-- **Code design and architecture** - Is this the right approach?
-- **Potential bugs and edge cases** - What could go wrong?
-- **Performance implications** - Will this scale?
-- **Security considerations** - Are there vulnerabilities?
-- **Maintainability** - Will future developers understand this?
-- **Best practices** - Industry standards and proven patterns
+- 🏗️ **Architecture** - Design patterns, SOLID principles, maintainability
+- 🐛 **Bugs** - Edge cases, potential issues, error handling
+- ⚡ **Performance** - Scalability, efficiency, resource usage
+- 🔒 **Security** - Vulnerabilities, best practices, data protection
+- 📚 **Best practices** - Industry standards, clean code principles
+- 🎯 **Logic** - Algorithm efficiency, code clarity, maintainability
 
-### 💡 **Review Philosophy**
-- **Constructive and motivational** - Builds up developers, doesn't tear down
-- **Context-aware** - Understands your project structure and patterns
-- **Educational** - Each comment is a comprehensive learning opportunity
-- **Practical** - Provides actionable suggestions with detailed explanations
+### **Review quality:**
+
+- **Educational focus** - Every comment teaches you something new
+- **Context-aware** - Understands your entire codebase structure
+- **Actionable feedback** - Specific suggestions with code examples
+- **Constructive tone** - Builds you up as a developer
 
 ## Configuration (Optional)
 
@@ -106,7 +108,7 @@ max_comments: 3
 # Files to ignore
 ignore_patterns:
   - "*.md"
-  - "tests/*"  # Add if you don't want test reviews
+  - "tests/*" # Add if you don't want test reviews
   - "*.lock"
   - "dist/**"
 
@@ -114,15 +116,15 @@ ignore_patterns:
 custom_prompt: |
   ## Project Context
   This is a React TypeScript e-commerce application with Node.js backend.
-  
+
   ## Architecture Standards
   We follow Clean Architecture with Domain-Driven Design principles.
-  
+
   ## Technology Requirements
   - React components should use hooks and functional patterns
   - All API endpoints must include proper OpenAPI documentation
   - Database queries should use Prisma with proper typing
-  
+
   ## Security Standards
   - All user inputs must be validated and sanitized
   - PCI compliance required for payment processing code
@@ -148,34 +150,56 @@ The more context you provide, the more targeted and valuable the reviews become.
 - ✅ **Repository structure** - AI understands your project layout
 - ✅ **Cost optimization** - Efficient chunking and context management
 
-## Supported Providers
+## 🤖 AI Provider Options
 
-| Provider   | Models Available                        | Cost Range      |
-| ---------- | --------------------------------------- | --------------- |
-| Anthropic  | All Claude models (Haiku, Sonnet, Opus) | ~$0.002-0.05/PR |
-| OpenRouter | 400+ models including Claude, GPT, etc. | ~$0.001-0.10/PR |
+| Provider       | Best For                      | Models Available                        |
+| -------------- | ----------------------------- | --------------------------------------- |
+| **Anthropic**  | Direct Claude model access    | Claude-4, Claude-3.5, Claude-3          |
+| **OpenRouter** | Model variety and flexibility | 400+ models (Claude, GPT, Gemini, etc.) |
 
-Choose your provider based on your needs:
+### **💡 Model suggestions:**
 
-- **Anthropic**: Direct access to Claude models
-- **OpenRouter**: Access to multiple AI providers, often cheaper rates
+Choose based on your needs - Bad Buggy works great with any model:
+- **Latest models**: `claude-sonnet-4-20250514`, `gpt-4o`, `gemini-pro`  
+- **Budget-friendly**: `claude-3-5-haiku`, `gpt-4o-mini`
+- **Specialized**: Browse 400+ models on OpenRouter
 
-## Troubleshooting
+### **💰 Real-time pricing:**
 
-**"Resource not accessible by integration" error?**
+Bad Buggy automatically fetches current pricing from providers, so you always see accurate costs - no surprises!
 
-- Check repository permissions in Settings → Actions → General
-- Make sure you selected "Read and write permissions"
+## 🛠️ Troubleshooting
 
 **No comments appearing?**
 
-- Verify your API key is added as a repository secret
-- Check the workflow logs for any errors
+- ✅ Check your API key is added as a repository secret
+- ✅ Verify the workflow runs without errors in Actions tab
+- ✅ Make sure your PR has actual code changes (not just README updates)
 
-## Privacy
+**Permission errors?**
 
-Your code is sent to your chosen AI provider (Anthropic or OpenRouter) for review. No data is stored by this action.
+- ✅ The workflow file includes proper `permissions:` section (see setup above)
+- ✅ Repository Settings → Actions → General → "Read and write permissions"
 
-## License
+**Want more help?** [Open an issue](https://github.com/gundurraga/bad-buggy/issues) - we respond quickly!
 
-MIT License - see LICENSE file for details
+---
+
+## 🔒 Privacy & Security
+
+- Your code is sent to your chosen AI provider for review
+- No data is stored by Bad Buggy itself
+- All API keys are handled securely through GitHub Secrets
+- Full audit trail in GitHub Actions logs
+
+## ⭐ Star us!
+
+If Bad Buggy is helping you write better code, **[give us a star](https://github.com/gundurraga/bad-buggy)** ⭐
+
+It helps other developers discover this tool and motivates us to keep improving it.
+
+---
+
+**Built with ❤️ by developers, for developers**
+
+_MIT License - see LICENSE file for details_

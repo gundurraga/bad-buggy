@@ -204,12 +204,9 @@ export class ReviewWorkflow {
 
     Logger.reviewStart();
     
-    let allComments: ReviewComment[] = [];
-    let totalTokens: TokenUsage = { input: 0, output: 0 };
-
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
-      const chunkNumber = i + 1;
+    // Process chunks in parallel for better performance
+    const chunkPromises = chunks.map(async (chunk, index) => {
+      const chunkNumber = index + 1;
       
       Logger.chunkReview(chunkNumber, chunks.length, chunk.content.length, chunk.fileChanges.map(f => f.filename));
       Logger.aiProviderCall(chunkNumber, this.inputs.aiProvider, this.inputs.model);
@@ -226,9 +223,20 @@ export class ReviewWorkflow {
       Logger.chunkResults(chunkNumber, comments.length, tokens.input, tokens.output, duration);
       Logger.chunkIssues(chunkNumber, comments);
 
+      return { comments, tokens, chunkNumber };
+    });
+
+    // Wait for all chunks to complete
+    const chunkResults = await Promise.all(chunkPromises);
+    
+    // Aggregate results from all chunks
+    let allComments: ReviewComment[] = [];
+    let totalTokens: TokenUsage = { input: 0, output: 0 };
+    
+    chunkResults.forEach(({ comments, tokens }) => {
       allComments = allComments.concat(comments);
       totalTokens = accumulateTokens(totalTokens, tokens);
-    }
+    });
 
     // Always save review state for incremental reviews
     if (incrementalDiff.newCommits.length > 0) {
@@ -283,11 +291,25 @@ export class ReviewWorkflow {
       deletions: pr.deletions || 0
     };
 
+    // Calculate cost information for PR comment
+    let costInfo;
+    try {
+      const cost = await calculateCost(
+        totalTokens,
+        this.inputs.model,
+        this.inputs.aiProvider
+      );
+      costInfo = cost;
+    } catch (error) {
+      console.warn(`Failed to calculate cost for PR comment: ${error}`);
+    }
+
     let reviewBody = formatReviewBody(
       this.inputs.model,
       totalTokens,
       finalComments.length,
-      prInfo
+      prInfo,
+      costInfo
     );
     
     // Prepend incremental message if available

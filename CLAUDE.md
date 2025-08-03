@@ -4,7 +4,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Bad Buggy is a GitHub Action that provides AI-powered code reviews for pull requests using Claude and other AI models. It focuses on educational, constructive feedback with transparent cost tracking and incremental review capabilities.
+Bad Buggy is a GitHub Action that provides AI-powered code reviews for pull requests using various AI models from multiple providers (Anthropic, OpenRouter, etc.). It focuses on educational, constructive feedback with transparent cost tracking and incremental review capabilities.
+
+## Important: Provider Neutrality
+
+Bad Buggy is designed to be provider-neutral and model-agnostic. When working on this codebase:
+
+- **DO NOT** favor any specific AI provider (Anthropic, OpenRouter, etc.) in code, documentation, or recommendations
+- **DO NOT** hardcode pricing - always use real-time pricing APIs
+- **DO** treat all providers and models equally
+- **DO** let users choose their preferred provider and model based on their needs
+- **DO** refer to the product as "Bad Buggy" rather than generic terms like "AI reviewer"
+
+The goal is to provide users maximum flexibility in choosing their AI provider while maintaining consistent Bad Buggy functionality.
 
 ## Development Commands
 

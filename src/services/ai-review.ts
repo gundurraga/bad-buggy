@@ -9,7 +9,7 @@ import {
 
 interface AICommentInput {
   file: string;
-  line: number;
+  line?: number; // Optional for file-level comments
   end_line?: number;
   comment: string;
 }
@@ -90,11 +90,17 @@ export const buildReviewPrompt = (
   return `${fullPrompt}${contextSection}
 
 Please review the following code changes and provide maximum your top 1-5 most impactful insights as a JSON array.
-Each comment should have:
-- file: the filename
-- line: the line number (from the diff)
-- end_line: (optional) the end line for multi-line comments
-- comment: your insight with explanation of why it matters
+
+Each comment can be either:
+1. **Line-level comment** (specific to diff lines):
+   - file: the filename
+   - line: the line number (from the diff)  
+   - end_line: (optional) the end line for multi-line comments
+   - comment: your insight
+
+2. **File-level comment** (general file feedback):
+   - file: the filename
+   - comment: your insight (omit line/end_line for file-level comments)
 
 Examples of senior engineer feedback with markdown formatting:
 
@@ -110,6 +116,10 @@ Examples of senior engineer feedback with markdown formatting:
     "line": 78,
     "end_line": 85,
     "comment": "**Great use of the Strategy pattern!**\n\nYour implementation is clean and follows good design principles. One enhancement to consider:\n\n**Add transaction locking** to prevent race conditions during concurrent payment processing:\n\n\`\`\`javascript\nconst lock = await acquirePaymentLock(userId);\ntry {\n  // Your payment processing logic\n} finally {\n  await releaseLock(lock);\n}\n\`\`\`\n\nThis would make the system more robust under high load and prevent double-charging scenarios."
+  },
+  {
+    "file": "src/config.ts",
+    "comment": "**Excellent configuration architecture!**\n\nThis file demonstrates good separation of concerns with environment-based configuration. Consider adding:\n\n1. **Configuration validation** using a schema library like Joi or Yup\n2. **Type safety** with strict TypeScript interfaces\n3. **Default fallbacks** for optional configuration values\n\nThis would make the configuration more robust and easier to maintain as the application grows."
   }
 ]
 
@@ -126,7 +136,7 @@ const isValidComment = (comment: unknown): comment is AICommentInput => {
   }
   const obj = comment as Record<string, unknown>;
   return typeof obj.file === 'string' && 
-         typeof obj.line === 'number' && 
+         (obj.line === undefined || typeof obj.line === 'number') && 
          typeof obj.comment === 'string';
 };
 
@@ -147,16 +157,25 @@ export const parseAIResponse = (responseContent: string): ReviewComment[] => {
       })
       .map((comment: {
         file: string;
-        line: number;
+        line?: number;
         end_line?: number;
         comment: string;
       }) => {
-        return {
+        const reviewComment: ReviewComment = {
           path: comment.file,
-          line: comment.line,
-          end_line: comment.end_line,
           body: comment.comment,
+          commentType: comment.line !== undefined ? 'diff' : 'file',
         };
+        
+        if (comment.line !== undefined) {
+          reviewComment.line = comment.line;
+        }
+        
+        if (comment.end_line !== undefined) {
+          reviewComment.end_line = comment.end_line;
+        }
+        
+        return reviewComment;
       });
   } catch (e) {
     // If that fails, try to extract JSON from the response
@@ -174,16 +193,25 @@ export const parseAIResponse = (responseContent: string): ReviewComment[] => {
           })
           .map((comment: {
             file: string;
-            line: number;
+            line?: number;
             end_line?: number;
             comment: string;
           }) => {
-            return {
+            const reviewComment: ReviewComment = {
               path: comment.file,
-              line: comment.line,
-              end_line: comment.end_line,
               body: comment.comment,
+              commentType: comment.line !== undefined ? 'diff' : 'file',
             };
+            
+            if (comment.line !== undefined) {
+              reviewComment.line = comment.line;
+            }
+            
+            if (comment.end_line !== undefined) {
+              reviewComment.end_line = comment.end_line;
+            }
+            
+            return reviewComment;
           });
       } else {
         core.warning(

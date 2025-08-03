@@ -108,6 +108,12 @@ const validateCommentsAgainstDiff = (comments, fileChanges) => {
     }
     // Filter comments to only include those on valid lines
     return comments.filter((comment) => {
+        // File-level comments don't need line validation
+        if (comment.line === undefined || comment.commentType === 'file') {
+            // Just check if the file exists in the changes
+            return fileChanges.some(file => file.filename === comment.path);
+        }
+        // Diff comments need line validation
         const validLines = fileValidLines.get(comment.path);
         if (!validLines || validLines.size === 0) {
             return false; // No valid lines for this file
@@ -126,11 +132,22 @@ const postReview = async (octokit, context, pr, comments, body, fileChanges) => 
             logger_1.Logger.commentFiltering(filteredCount, filteredComments.map((c) => `${c.path}:${c.line}`));
         }
     }
-    const reviewComments = validatedComments.map((comment) => ({
-        path: comment.path,
-        line: comment.line,
-        body: comment.body,
-    }));
+    const reviewComments = validatedComments.map((comment) => {
+        const baseComment = {
+            path: comment.path,
+            body: comment.body,
+        };
+        // Only add line if it's a diff comment (not file-level)
+        if (comment.line !== undefined) {
+            return {
+                ...baseComment,
+                line: comment.line,
+                ...(comment.end_line && { end_line: comment.end_line }),
+            };
+        }
+        // File-level comment without line
+        return baseComment;
+    });
     await octokit.rest.pulls.createReview({
         owner: context.repo.owner,
         repo: context.repo.repo,

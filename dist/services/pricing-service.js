@@ -68,20 +68,10 @@ class PricingService {
         catch (error) {
             console.warn(`Failed to fetch Anthropic pricing from API: ${error}`);
         }
-        // Fallback to known pricing (updated as of 2024)
-        const knownPricing = {
-            "claude-3-5-sonnet-20241022": { input: 0.000003, output: 0.000015 },
-            "claude-3-5-sonnet-20240620": { input: 0.000003, output: 0.000015 },
-            "claude-3-5-haiku-20241022": { input: 0.000001, output: 0.000005 },
-            "claude-3-opus-20240229": { input: 0.000015, output: 0.000075 },
-            "claude-3-sonnet-20240229": { input: 0.000003, output: 0.000015 },
-            "claude-3-haiku-20240307": { input: 0.00000025, output: 0.00000125 },
-        };
-        const pricing = knownPricing[model];
-        if (!pricing) {
-            throw new types_1.AIProviderError(`Unknown Anthropic model pricing: ${model}`);
-        }
-        return pricing;
+        // If API pricing is not available, we cannot provide fallback pricing
+        // as prices change frequently. User should check their provider's pricing page.
+        throw new types_1.AIProviderError(`Unable to fetch real-time pricing for model: ${model}. ` +
+            `Please check https://www.anthropic.com/pricing for current rates.`);
     }
     // Fetch OpenRouter model pricing
     async fetchOpenRouterPricing(model) {

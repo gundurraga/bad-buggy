@@ -88,9 +88,10 @@ export interface CostCalculation {
 // Review types
 export interface ReviewComment {
   path: string;
-  line: number;
+  line?: number; // Optional for file-level comments
   end_line?: number;
   body: string;
+  commentType?: 'diff' | 'file'; // Track comment type for better handling
 }
 
 export interface DiffChunk {

@@ -155,11 +155,9 @@ class ReviewWorkflow {
             };
         }
         logger_1.Logger.reviewStart();
-        let allComments = [];
-        let totalTokens = { input: 0, output: 0 };
-        for (let i = 0; i < chunks.length; i++) {
-            const chunk = chunks[i];
-            const chunkNumber = i + 1;
+        // Process chunks in parallel for better performance
+        const chunkPromises = chunks.map(async (chunk, index) => {
+            const chunkNumber = index + 1;
             logger_1.Logger.chunkReview(chunkNumber, chunks.length, chunk.content.length, chunk.fileChanges.map(f => f.filename));
             logger_1.Logger.aiProviderCall(chunkNumber, this.inputs.aiProvider, this.inputs.model);
             const startTime = Date.now();
@@ -167,9 +165,17 @@ class ReviewWorkflow {
             const duration = Date.now() - startTime;
             logger_1.Logger.chunkResults(chunkNumber, comments.length, tokens.input, tokens.output, duration);
             logger_1.Logger.chunkIssues(chunkNumber, comments);
+            return { comments, tokens, chunkNumber };
+        });
+        // Wait for all chunks to complete
+        const chunkResults = await Promise.all(chunkPromises);
+        // Aggregate results from all chunks
+        let allComments = [];
+        let totalTokens = { input: 0, output: 0 };
+        chunkResults.forEach(({ comments, tokens }) => {
             allComments = allComments.concat(comments);
             totalTokens = (0, cost_1.accumulateTokens)(totalTokens, tokens);
-        }
+        });
         // Always save review state for incremental reviews
         if (incrementalDiff.newCommits.length > 0) {
             const newReviewState = {
@@ -207,7 +213,16 @@ class ReviewWorkflow {
             additions: pr.additions || 0,
             deletions: pr.deletions || 0
         };
-        let reviewBody = (0, github_1.formatReviewBody)(this.inputs.model, totalTokens, finalComments.length, prInfo);
+        // Calculate cost information for PR comment
+        let costInfo;
+        try {
+            const cost = await (0, cost_1.calculateCost)(totalTokens, this.inputs.model, this.inputs.aiProvider);
+            costInfo = cost;
+        }
+        catch (error) {
+            console.warn(`Failed to calculate cost for PR comment: ${error}`);
+        }
+        let reviewBody = (0, github_1.formatReviewBody)(this.inputs.model, totalTokens, finalComments.length, prInfo, costInfo);
         // Prepend incremental message if available
         if (incrementalMessage) {
             reviewBody = `${incrementalMessage}\n\n${reviewBody}`;

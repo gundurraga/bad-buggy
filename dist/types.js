@@ -5,7 +5,7 @@ exports.AIProviderError = exports.ConfigValidationError = void 0;
 class ConfigValidationError extends Error {
     constructor(message) {
         super(message);
-        this.name = 'ConfigValidationError';
+        this.name = "ConfigValidationError";
     }
 }
 exports.ConfigValidationError = ConfigValidationError;
@@ -13,7 +13,7 @@ class AIProviderError extends Error {
     constructor(message, statusCode) {
         super(message);
         this.statusCode = statusCode;
-        this.name = 'AIProviderError';
+        this.name = "AIProviderError";
     }
 }
 exports.AIProviderError = AIProviderError;

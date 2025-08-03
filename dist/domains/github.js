@@ -9,7 +9,7 @@ const extractPRInfo = (pr) => {
         baseSha: pr.base.sha,
         headRef: pr.head.ref,
         baseRef: pr.base.ref,
-        author: pr.user.login
+        author: pr.user.login,
     };
 };
 exports.extractPRInfo = extractPRInfo;
@@ -27,7 +27,7 @@ const formatReviewBody = (model, totalTokens, commentCount, prInfo) => {
             summary += `**Description:** ${prInfo.description.trim()}\n`;
         }
         summary += `\n**Modified Files:**\n`;
-        prInfo.filesChanged.slice(0, 10).forEach(file => {
+        prInfo.filesChanged.slice(0, 10).forEach((file) => {
             summary += `- \`${file}\`\n`;
         });
         if (prInfo.filesChanged.length > 10) {
@@ -44,11 +44,12 @@ const formatReviewBody = (model, totalTokens, commentCount, prInfo) => {
 };
 exports.formatReviewBody = formatReviewBody;
 // Pure function to create review comment
-const createReviewComment = (path, line, body) => {
+const createReviewComment = (path, line, body, end_line) => {
     return {
         path,
         line,
-        body
+        body,
+        end_line,
     };
 };
 exports.createReviewComment = createReviewComment;

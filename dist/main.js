@@ -39,6 +39,7 @@ const github = __importStar(require("@actions/github"));
 const config_1 = require("./config");
 const workflow_1 = require("./services/workflow");
 const logger_1 = require("./services/logger");
+const credential_manager_1 = require("./security/credential-manager");
 // Pure function to get action inputs
 const getActionInputs = () => {
     return {
@@ -56,6 +57,9 @@ const run = async () => {
         // Get and validate inputs
         const inputs = getActionInputs();
         logger_1.Logger.inputs(inputs.aiProvider, inputs.model, inputs.configFile);
+        // Initialize credential manager with the API key
+        const credentialManager = credential_manager_1.CredentialManager.getInstance();
+        credentialManager.setApiKey(inputs.aiProvider, inputs.apiKey);
         // Load and validate configuration
         logger_1.Logger.configLoading(inputs.configFile);
         const config = await (0, config_1.loadConfig)(inputs.configFile);

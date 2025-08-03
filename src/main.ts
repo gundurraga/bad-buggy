@@ -4,6 +4,7 @@ import { ActionInputs } from "./types";
 import { loadConfig } from "./config";
 import { ReviewWorkflow } from "./services/workflow";
 import { Logger } from "./services/logger";
+import { CredentialManager } from "./security/credential-manager";
 
 // Pure function to get action inputs
 const getActionInputs = (): ActionInputs => {
@@ -28,6 +29,10 @@ export const run = async (): Promise<void> => {
     // Get and validate inputs
     const inputs = getActionInputs();
     Logger.inputs(inputs.aiProvider, inputs.model, inputs.configFile);
+
+    // Initialize credential manager with the API key
+    const credentialManager = CredentialManager.getInstance();
+    credentialManager.setApiKey(inputs.aiProvider, inputs.apiKey);
 
     // Load and validate configuration
     Logger.configLoading(inputs.configFile);

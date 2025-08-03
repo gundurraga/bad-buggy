@@ -1023,6 +1023,7 @@ const github = __importStar(__nccwpck_require__(5438));
 const config_1 = __nccwpck_require__(1677);
 const workflow_1 = __nccwpck_require__(7336);
 const logger_1 = __nccwpck_require__(9741);
+const credential_manager_1 = __nccwpck_require__(2803);
 // Pure function to get action inputs
 const getActionInputs = () => {
     return {
@@ -1040,6 +1041,9 @@ const run = async () => {
         // Get and validate inputs
         const inputs = getActionInputs();
         logger_1.Logger.inputs(inputs.aiProvider, inputs.model, inputs.configFile);
+        // Initialize credential manager with the API key
+        const credentialManager = credential_manager_1.CredentialManager.getInstance();
+        credentialManager.setApiKey(inputs.aiProvider, inputs.apiKey);
         // Load and validate configuration
         logger_1.Logger.configLoading(inputs.configFile);
         const config = await (0, config_1.loadConfig)(inputs.configFile);

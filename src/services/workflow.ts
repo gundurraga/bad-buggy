@@ -155,7 +155,7 @@ export class ReviewWorkflow {
       reviewState?.lastReviewedSha
     );
     
-    const incrementalResult = processIncrementalDiff(incrementalDiff);
+    const incrementalResult = processIncrementalDiff(incrementalDiff, this.config);
     
     if (!incrementalResult.shouldReview) {
       core.info(incrementalResult.message || 'No new changes to review');

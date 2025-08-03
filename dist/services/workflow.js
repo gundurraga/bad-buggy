@@ -120,7 +120,7 @@ class ReviewWorkflow {
         // Always handle incremental reviews (simplified approach)
         const reviewState = await (0, github_api_1.getReviewState)(this.octokit, this.context, pr);
         const incrementalDiff = await (0, github_api_1.getIncrementalDiff)(this.octokit, this.context, pr, reviewState?.lastReviewedSha);
-        const incrementalResult = (0, review_1.processIncrementalDiff)(incrementalDiff);
+        const incrementalResult = (0, review_1.processIncrementalDiff)(incrementalDiff, this.config);
         if (!incrementalResult.shouldReview) {
             core.info(incrementalResult.message || 'No new changes to review');
             return {

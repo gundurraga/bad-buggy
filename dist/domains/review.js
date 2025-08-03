@@ -141,22 +141,24 @@ const chunkDiff = async (diff, config, repositoryContext, octokit, context, sha)
 };
 exports.chunkDiff = chunkDiff;
 // Process incremental diff for review (always enabled now)
-const processIncrementalDiff = (incrementalDiff) => {
+const processIncrementalDiff = (incrementalDiff, config) => {
     if (incrementalDiff.newCommits.length === 0) {
         return {
             shouldReview: false,
             message: '🔄 **Incremental Review**: No new commits to review since last review.'
         };
     }
-    if (incrementalDiff.changedFiles.length === 0) {
+    // Filter out ignored files before counting
+    const filesToReview = incrementalDiff.changedFiles.filter(file => !(0, exports.shouldIgnoreFile)(file.filename, config));
+    if (filesToReview.length === 0) {
         return {
             shouldReview: false,
-            message: `🔄 **Incremental Review**: ${incrementalDiff.newCommits.length} new commit(s) found, but no file changes to review.`
+            message: `🔄 **Incremental Review**: ${incrementalDiff.newCommits.length} new commit(s) found, but no file changes to review after applying ignore patterns.`
         };
     }
     const message = incrementalDiff.isIncremental
-        ? `🔄 **Incremental Review**: Reviewing ${incrementalDiff.newCommits.length} new commit(s) with ${incrementalDiff.changedFiles.length} files to review.`
-        : `🆕 **Initial Review**: Reviewing all ${incrementalDiff.changedFiles.length} files to review in this PR.`;
+        ? `🔄 **Incremental Review**: Reviewing ${incrementalDiff.newCommits.length} new commit(s) with ${filesToReview.length} files to review.`
+        : `🆕 **Initial Review**: Reviewing ${filesToReview.length} files to review in this PR.`;
     return {
         shouldReview: true,
         message

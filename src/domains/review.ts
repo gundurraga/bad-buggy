@@ -178,7 +178,8 @@ export const chunkDiff = async (
 
 // Process incremental diff for review (always enabled now)
 export const processIncrementalDiff = (
-  incrementalDiff: IncrementalDiff
+  incrementalDiff: IncrementalDiff,
+  config: ReviewConfig
 ): { shouldReview: boolean; message?: string } => {
   if (incrementalDiff.newCommits.length === 0) {
     return {
@@ -187,16 +188,21 @@ export const processIncrementalDiff = (
     };
   }
 
-  if (incrementalDiff.changedFiles.length === 0) {
+  // Filter out ignored files before counting
+  const filesToReview = incrementalDiff.changedFiles.filter(
+    file => !shouldIgnoreFile(file.filename, config)
+  );
+
+  if (filesToReview.length === 0) {
     return {
       shouldReview: false,
-      message: `🔄 **Incremental Review**: ${incrementalDiff.newCommits.length} new commit(s) found, but no file changes to review.`
+      message: `🔄 **Incremental Review**: ${incrementalDiff.newCommits.length} new commit(s) found, but no file changes to review after applying ignore patterns.`
     };
   }
 
   const message = incrementalDiff.isIncremental
-    ? `🔄 **Incremental Review**: Reviewing ${incrementalDiff.newCommits.length} new commit(s) with ${incrementalDiff.changedFiles.length} files to review.`
-    : `🆕 **Initial Review**: Reviewing all ${incrementalDiff.changedFiles.length} files to review in this PR.`;
+    ? `🔄 **Incremental Review**: Reviewing ${incrementalDiff.newCommits.length} new commit(s) with ${filesToReview.length} files to review.`
+    : `🆕 **Initial Review**: Reviewing ${filesToReview.length} files to review in this PR.`;
 
   return {
     shouldReview: true,

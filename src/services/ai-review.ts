@@ -10,7 +10,7 @@ import {
 interface AICommentInput {
   file: string;
   line?: number; // Optional for file-level comments
-  end_line?: number;
+  start_line?: number; // For multi-line comments
   comment: string;
 }
 import { callAIProvider } from "../effects/ai-api";
@@ -92,15 +92,20 @@ export const buildReviewPrompt = (
 Please review the following code changes and provide maximum your top 1-5 most impactful insights as a JSON array.
 
 Each comment can be either:
-1. **Line-level comment** (specific to diff lines):
+1. **Single-line comment** (specific to one diff line):
    - file: the filename
-   - line: the line number (from the diff)  
-   - end_line: (optional) the end line for multi-line comments
+   - line: the line number (from the diff)
    - comment: your insight
 
-2. **File-level comment** (general file feedback):
+2. **Multi-line comment** (spans multiple diff lines):
    - file: the filename
-   - comment: your insight (omit line/end_line for file-level comments)
+   - start_line: the first line number
+   - line: the last line number  
+   - comment: your insight
+
+3. **File-level comment** (general file feedback):
+   - file: the filename
+   - comment: your insight (omit line/start_line for file-level comments)
 
 Examples of senior engineer feedback with markdown formatting:
 
@@ -108,13 +113,12 @@ Examples of senior engineer feedback with markdown formatting:
   {
     "file": "src/auth.js",
     "line": 45,
-    "end_line": 65,
     "comment": "**Security vulnerability: SQL injection risk**\n\nYour current approach uses direct string concatenation with user input, which creates a serious security vulnerability that could lead to database compromise.\n\n**Solution**: Use parameterized queries:\n\n\`\`\`sql\n-- Instead of:\nSELECT * FROM users WHERE id = '" + userId + "'\n\n-- Use:\nSELECT * FROM users WHERE id = ?\n\`\`\`\n\nThis follows OWASP guidelines and is a critical security practice that prevents attackers from injecting malicious SQL code."
   },
   {
     "file": "src/payment.js", 
-    "line": 78,
-    "end_line": 85,
+    "start_line": 78,
+    "line": 85,
     "comment": "**Great use of the Strategy pattern!**\n\nYour implementation is clean and follows good design principles. One enhancement to consider:\n\n**Add transaction locking** to prevent race conditions during concurrent payment processing:\n\n\`\`\`javascript\nconst lock = await acquirePaymentLock(userId);\ntry {\n  // Your payment processing logic\n} finally {\n  await releaseLock(lock);\n}\n\`\`\`\n\nThis would make the system more robust under high load and prevent double-charging scenarios."
   },
   {
@@ -158,21 +162,21 @@ export const parseAIResponse = (responseContent: string): ReviewComment[] => {
       .map((comment: {
         file: string;
         line?: number;
-        end_line?: number;
+        start_line?: number;
         comment: string;
       }) => {
         const reviewComment: ReviewComment = {
           path: comment.file,
           body: comment.comment,
-          commentType: comment.line !== undefined ? 'diff' : 'file',
+          commentType: comment.line !== undefined || comment.start_line !== undefined ? 'diff' : 'file',
         };
         
         if (comment.line !== undefined) {
           reviewComment.line = comment.line;
         }
         
-        if (comment.end_line !== undefined) {
-          reviewComment.end_line = comment.end_line;
+        if (comment.start_line !== undefined) {
+          reviewComment.start_line = comment.start_line;
         }
         
         return reviewComment;
@@ -198,21 +202,21 @@ export const parseAIResponse = (responseContent: string): ReviewComment[] => {
           .map((comment: {
             file: string;
             line?: number;
-            end_line?: number;
+            start_line?: number;
             comment: string;
           }) => {
             const reviewComment: ReviewComment = {
               path: comment.file,
               body: comment.comment,
-              commentType: comment.line !== undefined ? 'diff' : 'file',
+              commentType: comment.line !== undefined || comment.start_line !== undefined ? 'diff' : 'file',
             };
             
             if (comment.line !== undefined) {
               reviewComment.line = comment.line;
             }
             
-            if (comment.end_line !== undefined) {
-              reviewComment.end_line = comment.end_line;
+            if (comment.start_line !== undefined) {
+              reviewComment.start_line = comment.start_line;
             }
             
             return reviewComment;

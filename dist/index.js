@@ -291,12 +291,11 @@ const formatReviewBody = (model, totalTokens, commentCount, prInfo, costInfo) =>
 };
 exports.formatReviewBody = formatReviewBody;
 // Pure function to create review comment (diff-based)
-const createReviewComment = (path, line, body, end_line) => {
+const createReviewComment = (path, line, body) => {
     return {
         path,
         line,
         body,
-        end_line,
         commentType: 'diff',
     };
 };
@@ -867,12 +866,19 @@ const postReview = async (octokit, context, pr, comments, body, fileChanges) => 
             path: comment.path,
             body: comment.body,
         };
-        // Only add line if it's a diff comment (not file-level)
+        // Handle multi-line comments (GitHub API format: start_line + line)
+        if (comment.start_line !== undefined && comment.line !== undefined) {
+            return {
+                ...baseComment,
+                start_line: comment.start_line,
+                line: comment.line, // This is the end line in GitHub's API
+            };
+        }
+        // Handle single-line diff comments
         if (comment.line !== undefined) {
             return {
                 ...baseComment,
                 line: comment.line,
-                ...(comment.end_line && { end_line: comment.end_line }),
             };
         }
         // File-level comment without line
@@ -1517,15 +1523,20 @@ const buildReviewPrompt = (config, chunkContent, repositoryContext) => {
 Please review the following code changes and provide maximum your top 1-5 most impactful insights as a JSON array.
 
 Each comment can be either:
-1. **Line-level comment** (specific to diff lines):
+1. **Single-line comment** (specific to one diff line):
    - file: the filename
-   - line: the line number (from the diff)  
-   - end_line: (optional) the end line for multi-line comments
+   - line: the line number (from the diff)
    - comment: your insight
 
-2. **File-level comment** (general file feedback):
+2. **Multi-line comment** (spans multiple diff lines):
    - file: the filename
-   - comment: your insight (omit line/end_line for file-level comments)
+   - start_line: the first line number
+   - line: the last line number  
+   - comment: your insight
+
+3. **File-level comment** (general file feedback):
+   - file: the filename
+   - comment: your insight (omit line/start_line for file-level comments)
 
 Examples of senior engineer feedback with markdown formatting:
 
@@ -1533,13 +1544,12 @@ Examples of senior engineer feedback with markdown formatting:
   {
     "file": "src/auth.js",
     "line": 45,
-    "end_line": 65,
     "comment": "**Security vulnerability: SQL injection risk**\n\nYour current approach uses direct string concatenation with user input, which creates a serious security vulnerability that could lead to database compromise.\n\n**Solution**: Use parameterized queries:\n\n\`\`\`sql\n-- Instead of:\nSELECT * FROM users WHERE id = '" + userId + "'\n\n-- Use:\nSELECT * FROM users WHERE id = ?\n\`\`\`\n\nThis follows OWASP guidelines and is a critical security practice that prevents attackers from injecting malicious SQL code."
   },
   {
     "file": "src/payment.js", 
-    "line": 78,
-    "end_line": 85,
+    "start_line": 78,
+    "line": 85,
     "comment": "**Great use of the Strategy pattern!**\n\nYour implementation is clean and follows good design principles. One enhancement to consider:\n\n**Add transaction locking** to prevent race conditions during concurrent payment processing:\n\n\`\`\`javascript\nconst lock = await acquirePaymentLock(userId);\ntry {\n  // Your payment processing logic\n} finally {\n  await releaseLock(lock);\n}\n\`\`\`\n\nThis would make the system more robust under high load and prevent double-charging scenarios."
   },
   {
@@ -1582,13 +1592,13 @@ const parseAIResponse = (responseContent) => {
             const reviewComment = {
                 path: comment.file,
                 body: comment.comment,
-                commentType: comment.line !== undefined ? 'diff' : 'file',
+                commentType: comment.line !== undefined || comment.start_line !== undefined ? 'diff' : 'file',
             };
             if (comment.line !== undefined) {
                 reviewComment.line = comment.line;
             }
-            if (comment.end_line !== undefined) {
-                reviewComment.end_line = comment.end_line;
+            if (comment.start_line !== undefined) {
+                reviewComment.start_line = comment.start_line;
             }
             return reviewComment;
         });
@@ -1614,13 +1624,13 @@ const parseAIResponse = (responseContent) => {
                     const reviewComment = {
                         path: comment.file,
                         body: comment.comment,
-                        commentType: comment.line !== undefined ? 'diff' : 'file',
+                        commentType: comment.line !== undefined || comment.start_line !== undefined ? 'diff' : 'file',
                     };
                     if (comment.line !== undefined) {
                         reviewComment.line = comment.line;
                     }
-                    if (comment.end_line !== undefined) {
-                        reviewComment.end_line = comment.end_line;
+                    if (comment.start_line !== undefined) {
+                        reviewComment.start_line = comment.start_line;
                     }
                     return reviewComment;
                 });

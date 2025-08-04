@@ -82,20 +82,17 @@ export const formatReviewBody = (
 export const createReviewComment = (
   path: string,
   line: number,
-  body: string,
-  end_line?: number
+  body: string
 ): {
   path: string;
   line: number;
   body: string;
-  end_line?: number;
   commentType: 'diff';
 } => {
   return {
     path,
     line,
     body,
-    end_line,
     commentType: 'diff',
   };
 };

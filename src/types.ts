@@ -89,7 +89,7 @@ export interface CostCalculation {
 export interface ReviewComment {
   path: string;
   line?: number; // Optional for file-level comments
-  end_line?: number;
+  start_line?: number; // For multi-line comments (GitHub API format) 
   body: string;
   commentType?: 'diff' | 'file'; // Track comment type for better handling
 }

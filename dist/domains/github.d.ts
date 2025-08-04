@@ -22,11 +22,10 @@ export declare const formatReviewBody: (model: string, totalTokens: {
     inputCost: number;
     outputCost: number;
 }) => string;
-export declare const createReviewComment: (path: string, line: number, body: string, end_line?: number) => {
+export declare const createReviewComment: (path: string, line: number, body: string) => {
     path: string;
     line: number;
     body: string;
-    end_line?: number;
     commentType: "diff";
 };
 export declare const createFileComment: (path: string, body: string) => {

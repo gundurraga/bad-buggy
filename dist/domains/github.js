@@ -23,9 +23,6 @@ const formatReviewBody = (model, totalTokens, commentCount, prInfo, costInfo) =>
         summary += `**Author:** @${prInfo.author}\n`;
         summary += `**Files Changed:** ${prInfo.filesChanged.length} files\n`;
         summary += `**Changes:** +${prInfo.additions} -${prInfo.deletions}\n`;
-        if (prInfo.description && prInfo.description.trim()) {
-            summary += `**Description:** ${prInfo.description.trim()}\n`;
-        }
         summary += `\n**Modified Files:**\n`;
         prInfo.filesChanged.slice(0, 10).forEach((file) => {
             summary += `- \`${file}\`\n`;
@@ -50,12 +47,11 @@ const formatReviewBody = (model, totalTokens, commentCount, prInfo, costInfo) =>
 };
 exports.formatReviewBody = formatReviewBody;
 // Pure function to create review comment (diff-based)
-const createReviewComment = (path, line, body, end_line) => {
+const createReviewComment = (path, line, body) => {
     return {
         path,
         line,
         body,
-        end_line,
         commentType: 'diff',
     };
 };

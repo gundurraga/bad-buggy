@@ -50,10 +50,6 @@ export const formatReviewBody = (
     summary += `**Files Changed:** ${prInfo.filesChanged.length} files\n`;
     summary += `**Changes:** +${prInfo.additions} -${prInfo.deletions}\n`;
 
-    if (prInfo.description && prInfo.description.trim()) {
-      summary += `**Description:** ${prInfo.description.trim()}\n`;
-    }
-
     summary += `\n**Modified Files:**\n`;
     prInfo.filesChanged.slice(0, 10).forEach((file) => {
       summary += `- \`${file}\`\n`;
@@ -86,20 +82,17 @@ export const formatReviewBody = (
 export const createReviewComment = (
   path: string,
   line: number,
-  body: string,
-  end_line?: number
+  body: string
 ): {
   path: string;
   line: number;
   body: string;
-  end_line?: number;
   commentType: 'diff';
 } => {
   return {
     path,
     line,
     body,
-    end_line,
     commentType: 'diff',
   };
 };

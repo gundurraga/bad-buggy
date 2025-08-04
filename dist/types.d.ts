@@ -75,7 +75,7 @@ export interface CostCalculation {
 export interface ReviewComment {
     path: string;
     line?: number;
-    end_line?: number;
+    start_line?: number;
     body: string;
     commentType?: 'diff' | 'file';
 }

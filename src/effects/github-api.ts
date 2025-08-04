@@ -152,12 +152,20 @@ export const postReview = async (
       body: comment.body,
     };
     
-    // Only add line if it's a diff comment (not file-level)
+    // Handle multi-line comments (GitHub API format: start_line + line)
+    if (comment.start_line !== undefined && comment.line !== undefined) {
+      return {
+        ...baseComment,
+        start_line: comment.start_line,
+        line: comment.line, // This is the end line in GitHub's API
+      };
+    }
+    
+    // Handle single-line diff comments
     if (comment.line !== undefined) {
       return {
         ...baseComment,
         line: comment.line,
-        ...(comment.end_line && { end_line: comment.end_line }),
       };
     }
     

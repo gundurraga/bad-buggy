@@ -130,8 +130,6 @@ const validateConfig = (config) => {
     if (!Array.isArray(config.allowed_users)) {
         errors.push('allowed_users must be an array');
     }
-    // Log warnings
-    warnings.forEach(warning => core.warning(warning));
     return {
         isValid: errors.length === 0,
         errors,
@@ -178,6 +176,10 @@ const validateInputs = (inputs) => {
 exports.validateInputs = validateInputs;
 // Effect: Validate and throw if invalid
 const validateAndThrow = (validation, errorType) => {
+    // Log warnings if any
+    if (validation.warnings) {
+        validation.warnings.forEach(warning => core.warning(warning));
+    }
     if (!validation.isValid) {
         throw new types_1.ConfigValidationError(`${errorType}: ${validation.errors.join(', ')}`);
     }

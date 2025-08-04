@@ -23,9 +23,6 @@ const formatReviewBody = (model, totalTokens, commentCount, prInfo, costInfo) =>
         summary += `**Author:** @${prInfo.author}\n`;
         summary += `**Files Changed:** ${prInfo.filesChanged.length} files\n`;
         summary += `**Changes:** +${prInfo.additions} -${prInfo.deletions}\n`;
-        if (prInfo.description && prInfo.description.trim()) {
-            summary += `**Description:** ${prInfo.description.trim()}\n`;
-        }
         summary += `\n**Modified Files:**\n`;
         prInfo.filesChanged.slice(0, 10).forEach((file) => {
             summary += `- \`${file}\`\n`;

@@ -137,8 +137,6 @@ const validateConfig = (config) => {
     if (!Array.isArray(config.allowed_users)) {
         errors.push('allowed_users must be an array');
     }
-    // Log warnings
-    warnings.forEach(warning => core.warning(warning));
     return {
         isValid: errors.length === 0,
         errors,
@@ -185,6 +183,10 @@ const validateInputs = (inputs) => {
 exports.validateInputs = validateInputs;
 // Effect: Validate and throw if invalid
 const validateAndThrow = (validation, errorType) => {
+    // Log warnings if any
+    if (validation.warnings) {
+        validation.warnings.forEach(warning => core.warning(warning));
+    }
     if (!validation.isValid) {
         throw new types_1.ConfigValidationError(`${errorType}: ${validation.errors.join(', ')}`);
     }
@@ -265,9 +267,6 @@ const formatReviewBody = (model, totalTokens, commentCount, prInfo, costInfo) =>
         summary += `**Author:** @${prInfo.author}\n`;
         summary += `**Files Changed:** ${prInfo.filesChanged.length} files\n`;
         summary += `**Changes:** +${prInfo.additions} -${prInfo.deletions}\n`;
-        if (prInfo.description && prInfo.description.trim()) {
-            summary += `**Description:** ${prInfo.description.trim()}\n`;
-        }
         summary += `\n**Modified Files:**\n`;
         prInfo.filesChanged.slice(0, 10).forEach((file) => {
             summary += `- \`${file}\`\n`;
@@ -1597,9 +1596,12 @@ const parseAIResponse = (responseContent) => {
     catch (e) {
         // If that fails, try to extract JSON from the response
         try {
-            const jsonMatch = responseContent.match(/\[[\s\S]*\]/);
-            if (jsonMatch) {
-                const parsedResponse = JSON.parse(jsonMatch[0]);
+            // More robust JSON extraction - find the first [ and last ]
+            const startIndex = responseContent.indexOf('[');
+            const lastIndex = responseContent.lastIndexOf(']');
+            if (startIndex !== -1 && lastIndex !== -1 && lastIndex > startIndex) {
+                const jsonString = responseContent.substring(startIndex, lastIndex + 1);
+                const parsedResponse = JSON.parse(jsonString);
                 comments = parsedResponse
                     .filter((comment) => {
                     if (!isValidComment(comment)) {

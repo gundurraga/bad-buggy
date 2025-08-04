@@ -169,9 +169,12 @@ const parseAIResponse = (responseContent) => {
     catch (e) {
         // If that fails, try to extract JSON from the response
         try {
-            const jsonMatch = responseContent.match(/\[[\s\S]*\]/);
-            if (jsonMatch) {
-                const parsedResponse = JSON.parse(jsonMatch[0]);
+            // More robust JSON extraction - find the first [ and last ]
+            const startIndex = responseContent.indexOf('[');
+            const lastIndex = responseContent.lastIndexOf(']');
+            if (startIndex !== -1 && lastIndex !== -1 && lastIndex > startIndex) {
+                const jsonString = responseContent.substring(startIndex, lastIndex + 1);
+                const parsedResponse = JSON.parse(jsonString);
                 comments = parsedResponse
                     .filter((comment) => {
                     if (!isValidComment(comment)) {

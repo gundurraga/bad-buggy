@@ -98,9 +98,6 @@ export const validateConfig = (config: ReviewConfig): ValidationResult => {
     errors.push('allowed_users must be an array');
   }
 
-  // Log warnings
-  warnings.forEach(warning => core.warning(warning));
-
   return {
     isValid: errors.length === 0,
     errors,
@@ -149,6 +146,11 @@ export const validateInputs = (inputs: ActionInputs): ValidationResult => {
 
 // Effect: Validate and throw if invalid
 export const validateAndThrow = (validation: ValidationResult, errorType: string): void => {
+  // Log warnings if any
+  if (validation.warnings) {
+    validation.warnings.forEach(warning => core.warning(warning));
+  }
+  
   if (!validation.isValid) {
     throw new ConfigValidationError(`${errorType}: ${validation.errors.join(', ')}`);
   }

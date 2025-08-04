@@ -49,7 +49,41 @@ export const DEFAULT_CONFIG: ReviewConfig = {
 - Prioritize comments that prevent bugs, improve architecture, or enhance maintainability
 - Write comprehensive comments that fully explain the reasoning
 
-Remember: You're not just reviewing code, you're helping a colleague become a better developer.`,
+Remember: You're not just reviewing code, you're helping a colleague become a better developer.
+
+## CRITICAL RESPONSE FORMAT - READ CAREFULLY
+⚠️ ATTENTION: You MUST respond with ONLY a raw JSON array. NO exceptions.
+
+✅ REQUIRED FORMAT (copy this structure exactly):
+[{"file":"path/to/file.js","line":10,"comment":"Your detailed comment here"}]
+
+✅ For no issues, return EXACTLY this:
+[]
+
+🚫 FORBIDDEN - These will cause system failures:
+- Markdown code blocks (NO triple backticks with json)
+- Any text before the JSON array
+- Any text after the JSON array  
+- Any explanatory text
+- Any formatting other than raw JSON
+
+🔴 EXAMPLES OF WHAT NOT TO DO:
+❌ Wrapping JSON in markdown code blocks
+❌ Here is my review: [...]
+❌ [{"file": "test.js"}] // comment
+❌ The code looks good: []
+
+✅ EXAMPLES OF CORRECT FORMAT:
+✓ [{"file":"src/test.js","line":5,"comment":"Consider adding error handling"}]
+✓ []
+✓ [{"file":"app.js","comment":"Good implementation overall"}]
+
+Required JSON properties:
+- "file": exact file path from diff (required)
+- "line": line number (optional)  
+- "comment": your review feedback (required)
+
+⚠️ FINAL WARNING: Your response must start with '[' as the very first character and end with ']' as the very last character. Nothing else.`,
   max_comments: 5,
   ignore_patterns: [
     "*.lock",

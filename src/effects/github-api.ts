@@ -444,7 +444,7 @@ export const getPackageInfo = async (
     }
     return null;
   } catch (error) {
-    Logger.error(`Failed to get package.json: ${error}`);
+    // Silently handle missing package.json - it's normal for non-Node.js projects
     return null;
   }
 };

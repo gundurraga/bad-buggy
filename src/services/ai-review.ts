@@ -148,9 +148,18 @@ const isValidComment = (comment: unknown): comment is AICommentInput => {
 export const parseAIResponse = (responseContent: string): ReviewComment[] => {
   let comments: ReviewComment[] = [];
 
+  // First, clean up the response by removing common markdown formatting
+  let cleanedResponse = responseContent.trim();
+  
+  // Remove markdown code blocks if present
+  cleanedResponse = cleanedResponse.replace(/^```json\s*\n?/i, '');
+  cleanedResponse = cleanedResponse.replace(/\n?```\s*$/i, '');
+  cleanedResponse = cleanedResponse.replace(/^```\s*\n?/i, '');
+  cleanedResponse = cleanedResponse.trim();
+
   try {
-    // Try to parse the full response first
-    const parsedResponse = JSON.parse(responseContent);
+    // Try to parse the cleaned response first
+    const parsedResponse = JSON.parse(cleanedResponse);
     comments = parsedResponse
       .filter((comment: unknown): comment is AICommentInput => {
         if (!isValidComment(comment)) {
@@ -182,14 +191,14 @@ export const parseAIResponse = (responseContent: string): ReviewComment[] => {
         return reviewComment;
       });
   } catch (e) {
-    // If that fails, try to extract JSON from the response
+    // If that fails, try to extract JSON from the cleaned response
     try {
       // More robust JSON extraction - find the first [ and last ]
-      const startIndex = responseContent.indexOf('[');
-      const lastIndex = responseContent.lastIndexOf(']');
+      const startIndex = cleanedResponse.indexOf('[');
+      const lastIndex = cleanedResponse.lastIndexOf(']');
       
       if (startIndex !== -1 && lastIndex !== -1 && lastIndex > startIndex) {
-        const jsonString = responseContent.substring(startIndex, lastIndex + 1);
+        const jsonString = cleanedResponse.substring(startIndex, lastIndex + 1);
         const parsedResponse = JSON.parse(jsonString);
         comments = parsedResponse
           .filter((comment: unknown): comment is AICommentInput => {
@@ -223,15 +232,70 @@ export const parseAIResponse = (responseContent: string): ReviewComment[] => {
           });
       } else {
         core.warning(
-          "Failed to parse AI response as JSON - no JSON array found"
+          "Failed to parse AI response as JSON - no JSON array found. The AI may have included text outside the JSON format."
         );
         core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
+        core.info("💡 Tip: Check if the AI model is following the JSON format instructions in the prompt.");
         comments = [];
       }
     } catch (e2) {
-      core.warning("Failed to parse AI response as JSON");
-      core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
-      comments = [];
+      // Final fallback: try to find individual JSON objects
+      try {
+        const jsonMatches = cleanedResponse.match(/\{[^{}]*"file"[^{}]*\}/g);
+        if (jsonMatches && jsonMatches.length > 0) {
+          const parsedComments = jsonMatches
+            .map(match => {
+              try {
+                return JSON.parse(match);
+              } catch {
+                return null;
+              }
+            })
+            .filter((comment): comment is AICommentInput => comment && isValidComment(comment))
+            .map((comment: {
+              file: string;
+              line?: number;
+              start_line?: number;
+              comment: string;
+            }) => {
+              const reviewComment: ReviewComment = {
+                path: comment.file,
+                body: comment.comment,
+                commentType: comment.line !== undefined || comment.start_line !== undefined ? 'diff' : 'file',
+              };
+              
+              if (comment.line !== undefined) {
+                reviewComment.line = comment.line;
+              }
+              
+              if (comment.start_line !== undefined) {
+                reviewComment.start_line = comment.start_line;
+              }
+              
+              return reviewComment;
+            });
+          
+          if (parsedComments.length > 0) {
+            core.info(`💡 Successfully recovered ${parsedComments.length} comments using fallback parsing.`);
+            comments = parsedComments;
+          } else {
+            core.warning("Failed to parse AI response as JSON - the response may contain invalid JSON syntax.");
+            core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
+            core.info("💡 Tip: This could indicate the AI model isn't compatible with structured JSON responses. Consider using a different model.");
+            comments = [];
+          }
+        } else {
+          core.warning("Failed to parse AI response as JSON - the response may contain invalid JSON syntax.");
+          core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
+          core.info("💡 Tip: This could indicate the AI model isn't compatible with structured JSON responses. Consider using a different model.");
+          comments = [];
+        }
+      } catch (e3) {
+        core.warning("Failed to parse AI response as JSON - the response may contain invalid JSON syntax.");
+        core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
+        core.info("💡 Tip: This could indicate the AI model isn't compatible with structured JSON responses. Consider using a different model.");
+        comments = [];
+      }
     }
   }
 

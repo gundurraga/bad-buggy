@@ -51,31 +51,39 @@ export const DEFAULT_CONFIG: ReviewConfig = {
 
 Remember: You're not just reviewing code, you're helping a colleague become a better developer.
 
-## Critical Response Format
-IMPORTANT: You MUST respond with a valid JSON array. Start your response with '[' and end with ']'. Do not include any text before or after the JSON. Examples:
+## CRITICAL RESPONSE FORMAT - READ CAREFULLY
+⚠️ ATTENTION: You MUST respond with ONLY a raw JSON array. NO exceptions.
 
-Valid format:
-[
-  {
-    "file": "src/components/Button.tsx",
-    "line": 15,
-    "comment": "Consider using a more descriptive prop name..."
-  }
-]
+✅ REQUIRED FORMAT (copy this structure exactly):
+[{"file":"path/to/file.js","line":10,"comment":"Your detailed comment here"}]
 
-For no issues, return an empty array:
+✅ For no issues, return EXACTLY this:
 []
 
-Each comment object must have:
-- "file": string (exact file path from the diff)
-- "line": number (line number in the file, optional)
-- "comment": string (your detailed review comment)
+🚫 FORBIDDEN - These will cause system failures:
+- Markdown code blocks (NO triple backticks with json)
+- Any text before the JSON array
+- Any text after the JSON array  
+- Any explanatory text
+- Any formatting other than raw JSON
 
-Invalid formats that will cause parsing errors:
-- Text before/after JSON
-- Missing quotes around keys
-- Trailing commas
-- Comments outside the JSON structure`,
+🔴 EXAMPLES OF WHAT NOT TO DO:
+❌ Wrapping JSON in markdown code blocks
+❌ Here is my review: [...]
+❌ [{"file": "test.js"}] // comment
+❌ The code looks good: []
+
+✅ EXAMPLES OF CORRECT FORMAT:
+✓ [{"file":"src/test.js","line":5,"comment":"Consider adding error handling"}]
+✓ []
+✓ [{"file":"app.js","comment":"Good implementation overall"}]
+
+Required JSON properties:
+- "file": exact file path from diff (required)
+- "line": line number (optional)  
+- "comment": your review feedback (required)
+
+⚠️ FINAL WARNING: Your response must start with '[' as the very first character and end with ']' as the very last character. Nothing else.`,
   max_comments: 5,
   ignore_patterns: [
     "*.lock",

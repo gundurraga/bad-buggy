@@ -148,9 +148,18 @@ const isValidComment = (comment: unknown): comment is AICommentInput => {
 export const parseAIResponse = (responseContent: string): ReviewComment[] => {
   let comments: ReviewComment[] = [];
 
+  // First, clean up the response by removing common markdown formatting
+  let cleanedResponse = responseContent.trim();
+  
+  // Remove markdown code blocks if present
+  cleanedResponse = cleanedResponse.replace(/^```json\s*\n?/i, '');
+  cleanedResponse = cleanedResponse.replace(/\n?```\s*$/i, '');
+  cleanedResponse = cleanedResponse.replace(/^```\s*\n?/i, '');
+  cleanedResponse = cleanedResponse.trim();
+
   try {
-    // Try to parse the full response first
-    const parsedResponse = JSON.parse(responseContent);
+    // Try to parse the cleaned response first
+    const parsedResponse = JSON.parse(cleanedResponse);
     comments = parsedResponse
       .filter((comment: unknown): comment is AICommentInput => {
         if (!isValidComment(comment)) {
@@ -182,14 +191,14 @@ export const parseAIResponse = (responseContent: string): ReviewComment[] => {
         return reviewComment;
       });
   } catch (e) {
-    // If that fails, try to extract JSON from the response
+    // If that fails, try to extract JSON from the cleaned response
     try {
       // More robust JSON extraction - find the first [ and last ]
-      const startIndex = responseContent.indexOf('[');
-      const lastIndex = responseContent.lastIndexOf(']');
+      const startIndex = cleanedResponse.indexOf('[');
+      const lastIndex = cleanedResponse.lastIndexOf(']');
       
       if (startIndex !== -1 && lastIndex !== -1 && lastIndex > startIndex) {
-        const jsonString = responseContent.substring(startIndex, lastIndex + 1);
+        const jsonString = cleanedResponse.substring(startIndex, lastIndex + 1);
         const parsedResponse = JSON.parse(jsonString);
         comments = parsedResponse
           .filter((comment: unknown): comment is AICommentInput => {
@@ -232,7 +241,7 @@ export const parseAIResponse = (responseContent: string): ReviewComment[] => {
     } catch (e2) {
       // Final fallback: try to find individual JSON objects
       try {
-        const jsonMatches = responseContent.match(/\{[^{}]*"file"[^{}]*\}/g);
+        const jsonMatches = cleanedResponse.match(/\{[^{}]*"file"[^{}]*\}/g);
         if (jsonMatches && jsonMatches.length > 0) {
           const parsedComments = jsonMatches
             .map(match => {

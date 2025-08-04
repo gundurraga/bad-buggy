@@ -223,15 +223,70 @@ export const parseAIResponse = (responseContent: string): ReviewComment[] => {
           });
       } else {
         core.warning(
-          "Failed to parse AI response as JSON - no JSON array found"
+          "Failed to parse AI response as JSON - no JSON array found. The AI may have included text outside the JSON format."
         );
         core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
+        core.info("💡 Tip: Check if the AI model is following the JSON format instructions in the prompt.");
         comments = [];
       }
     } catch (e2) {
-      core.warning("Failed to parse AI response as JSON");
-      core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
-      comments = [];
+      // Final fallback: try to find individual JSON objects
+      try {
+        const jsonMatches = responseContent.match(/\{[^{}]*"file"[^{}]*\}/g);
+        if (jsonMatches && jsonMatches.length > 0) {
+          const parsedComments = jsonMatches
+            .map(match => {
+              try {
+                return JSON.parse(match);
+              } catch {
+                return null;
+              }
+            })
+            .filter((comment): comment is AICommentInput => comment && isValidComment(comment))
+            .map((comment: {
+              file: string;
+              line?: number;
+              start_line?: number;
+              comment: string;
+            }) => {
+              const reviewComment: ReviewComment = {
+                path: comment.file,
+                body: comment.comment,
+                commentType: comment.line !== undefined || comment.start_line !== undefined ? 'diff' : 'file',
+              };
+              
+              if (comment.line !== undefined) {
+                reviewComment.line = comment.line;
+              }
+              
+              if (comment.start_line !== undefined) {
+                reviewComment.start_line = comment.start_line;
+              }
+              
+              return reviewComment;
+            });
+          
+          if (parsedComments.length > 0) {
+            core.info(`💡 Successfully recovered ${parsedComments.length} comments using fallback parsing.`);
+            comments = parsedComments;
+          } else {
+            core.warning("Failed to parse AI response as JSON - the response may contain invalid JSON syntax.");
+            core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
+            core.info("💡 Tip: This could indicate the AI model isn't compatible with structured JSON responses. Consider using a different model.");
+            comments = [];
+          }
+        } else {
+          core.warning("Failed to parse AI response as JSON - the response may contain invalid JSON syntax.");
+          core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
+          core.info("💡 Tip: This could indicate the AI model isn't compatible with structured JSON responses. Consider using a different model.");
+          comments = [];
+        }
+      } catch (e3) {
+        core.warning("Failed to parse AI response as JSON - the response may contain invalid JSON syntax.");
+        core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
+        core.info("💡 Tip: This could indicate the AI model isn't compatible with structured JSON responses. Consider using a different model.");
+        comments = [];
+      }
     }
   }
 

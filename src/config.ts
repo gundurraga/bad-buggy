@@ -49,7 +49,33 @@ export const DEFAULT_CONFIG: ReviewConfig = {
 - Prioritize comments that prevent bugs, improve architecture, or enhance maintainability
 - Write comprehensive comments that fully explain the reasoning
 
-Remember: You're not just reviewing code, you're helping a colleague become a better developer.`,
+Remember: You're not just reviewing code, you're helping a colleague become a better developer.
+
+## Critical Response Format
+IMPORTANT: You MUST respond with a valid JSON array. Start your response with '[' and end with ']'. Do not include any text before or after the JSON. Examples:
+
+Valid format:
+[
+  {
+    "file": "src/components/Button.tsx",
+    "line": 15,
+    "comment": "Consider using a more descriptive prop name..."
+  }
+]
+
+For no issues, return an empty array:
+[]
+
+Each comment object must have:
+- "file": string (exact file path from the diff)
+- "line": number (line number in the file, optional)
+- "comment": string (your detailed review comment)
+
+Invalid formats that will cause parsing errors:
+- Text before/after JSON
+- Missing quotes around keys
+- Trailing commas
+- Comments outside the JSON structure`,
   max_comments: 5,
   ignore_patterns: [
     "*.lock",

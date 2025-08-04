@@ -119,3 +119,19 @@ When adding tests, use Jest framework. Test files should be in `**/*.test.ts` pa
 - Built artifact is `dist/index.js` (not `dist/main.js`)
 - Requires Node 20 runtime
 - Input validation through GitHub Actions core library
+
+## Commit and PR Guidelines
+
+### Commit Messages
+Keep commit messages concise and direct:
+- Use simple present tense: "fix bug" not "fixes bug" or "fixed bug"
+- Start with type: `fix:`, `feat:`, `refactor:`, `docs:`
+- One line summary, details in body if needed
+- Example: `fix: handle multi-line comments in GitHub API`
+
+### Pull Request Descriptions
+Keep PR descriptions focused and brief:
+- Clear title describing the change
+- Simple bullet list of what changed
+- Avoid lengthy explanations unless complex
+- Include cost/performance impacts if relevant

@@ -42,7 +42,7 @@ const token_counter_1 = require("./token-counter");
  * Service for handling Bad Buggy-powered code review operations
  */
 // Build review prompt with repository context and contextual content
-const buildReviewPrompt = (config, chunkContent, repositoryContext) => {
+const buildReviewPrompt = (config, chunkContent, repositoryContext, prContext) => {
     const basePrompt = config.review_prompt.replace("{{DATE}}", new Date().toISOString().split("T")[0]);
     // Add custom prompt if provided
     const fullPrompt = config.custom_prompt
@@ -84,6 +84,27 @@ const buildReviewPrompt = (config, chunkContent, repositoryContext) => {
             }
             contextSection += "\n";
         }
+    }
+    // Add PR context if available
+    if (prContext) {
+        contextSection += "\n## Pull Request Context\n\n";
+        contextSection += `**Title:** ${prContext.title}\n`;
+        contextSection += `**Author:** ${prContext.author}\n`;
+        if (prContext.description && prContext.description.trim()) {
+            contextSection += `**Description:** ${prContext.description}\n`;
+        }
+        // Add existing comments to avoid repetition
+        if (prContext.existingComments.length > 0) {
+            contextSection += `\n**Important:** The following feedback has already been provided in previous reviews. DO NOT repeat similar comments:\n`;
+            prContext.existingComments.slice(0, 3).forEach((comment, index) => {
+                const preview = comment.length > 200 ? comment.substring(0, 200) + "..." : comment;
+                contextSection += `${index + 1}. ${preview}\n`;
+            });
+            if (prContext.existingComments.length > 3) {
+                contextSection += `... and ${prContext.existingComments.length - 3} more previous comments\n`;
+            }
+        }
+        contextSection += "\n";
     }
     return `${fullPrompt}${contextSection}
 
@@ -144,9 +165,16 @@ const isValidComment = (comment) => {
 // Pure function to parse AI response into ReviewComments
 const parseAIResponse = (responseContent) => {
     let comments = [];
+    // First, clean up the response by removing common markdown formatting
+    let cleanedResponse = responseContent.trim();
+    // Remove markdown code blocks if present
+    cleanedResponse = cleanedResponse.replace(/^```json\s*\n?/i, '');
+    cleanedResponse = cleanedResponse.replace(/\n?```\s*$/i, '');
+    cleanedResponse = cleanedResponse.replace(/^```\s*\n?/i, '');
+    cleanedResponse = cleanedResponse.trim();
     try {
-        // Try to parse the full response first
-        const parsedResponse = JSON.parse(responseContent);
+        // Try to parse the cleaned response first
+        const parsedResponse = JSON.parse(cleanedResponse);
         comments = parsedResponse
             .filter((comment) => {
             if (!isValidComment(comment)) {
@@ -171,13 +199,13 @@ const parseAIResponse = (responseContent) => {
         });
     }
     catch (e) {
-        // If that fails, try to extract JSON from the response
+        // If that fails, try to extract JSON from the cleaned response
         try {
             // More robust JSON extraction - find the first [ and last ]
-            const startIndex = responseContent.indexOf('[');
-            const lastIndex = responseContent.lastIndexOf(']');
+            const startIndex = cleanedResponse.indexOf('[');
+            const lastIndex = cleanedResponse.lastIndexOf(']');
             if (startIndex !== -1 && lastIndex !== -1 && lastIndex > startIndex) {
-                const jsonString = responseContent.substring(startIndex, lastIndex + 1);
+                const jsonString = cleanedResponse.substring(startIndex, lastIndex + 1);
                 const parsedResponse = JSON.parse(jsonString);
                 comments = parsedResponse
                     .filter((comment) => {
@@ -203,24 +231,74 @@ const parseAIResponse = (responseContent) => {
                 });
             }
             else {
-                core.warning("Failed to parse AI response as JSON - no JSON array found");
+                core.warning("Failed to parse AI response as JSON - no JSON array found. The AI may have included text outside the JSON format.");
                 core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
+                core.info("💡 Tip: Check if the AI model is following the JSON format instructions in the prompt.");
                 comments = [];
             }
         }
         catch (e2) {
-            core.warning("Failed to parse AI response as JSON");
-            core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
-            comments = [];
+            // Final fallback: try to find individual JSON objects
+            try {
+                const jsonMatches = cleanedResponse.match(/\{[^{}]*"file"[^{}]*\}/g);
+                if (jsonMatches && jsonMatches.length > 0) {
+                    const parsedComments = jsonMatches
+                        .map(match => {
+                        try {
+                            return JSON.parse(match);
+                        }
+                        catch {
+                            return null;
+                        }
+                    })
+                        .filter((comment) => comment && isValidComment(comment))
+                        .map((comment) => {
+                        const reviewComment = {
+                            path: comment.file,
+                            body: comment.comment,
+                            commentType: comment.line !== undefined || comment.start_line !== undefined ? 'diff' : 'file',
+                        };
+                        if (comment.line !== undefined) {
+                            reviewComment.line = comment.line;
+                        }
+                        if (comment.start_line !== undefined) {
+                            reviewComment.start_line = comment.start_line;
+                        }
+                        return reviewComment;
+                    });
+                    if (parsedComments.length > 0) {
+                        core.info(`💡 Successfully recovered ${parsedComments.length} comments using fallback parsing.`);
+                        comments = parsedComments;
+                    }
+                    else {
+                        core.warning("Failed to parse AI response as JSON - the response may contain invalid JSON syntax.");
+                        core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
+                        core.info("💡 Tip: This could indicate the AI model isn't compatible with structured JSON responses. Consider using a different model.");
+                        comments = [];
+                    }
+                }
+                else {
+                    core.warning("Failed to parse AI response as JSON - the response may contain invalid JSON syntax.");
+                    core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
+                    core.info("💡 Tip: This could indicate the AI model isn't compatible with structured JSON responses. Consider using a different model.");
+                    comments = [];
+                }
+            }
+            catch (e3) {
+                core.warning("Failed to parse AI response as JSON - the response may contain invalid JSON syntax.");
+                core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
+                core.info("💡 Tip: This could indicate the AI model isn't compatible with structured JSON responses. Consider using a different model.");
+                comments = [];
+            }
         }
     }
     return comments;
 };
 exports.parseAIResponse = parseAIResponse;
 // Effect: Review a single chunk with repository context using secure credential management
-const reviewChunk = async (chunk, config, provider, model) => {
+const reviewChunk = async (chunk, config, provider, model, prContext) => {
     // Always use repository context if available (simplified approach)
-    const prompt = (0, exports.buildReviewPrompt)(config, chunk.content, chunk.repositoryContext);
+    const prompt = (0, exports.buildReviewPrompt)(config, chunk.content, chunk.repositoryContext, prContext);
     core.info(`🔗 Calling AI provider: ${provider} with model: ${model}`);
     core.info(`📝 Prompt length: ${prompt.length} characters`);
     if (chunk.repositoryContext) {

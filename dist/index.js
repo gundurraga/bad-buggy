@@ -48,50 +48,77 @@ const core = __importStar(__nccwpck_require__(2186));
 exports.DEFAULT_CONFIG = {
     review_prompt: `You are an experienced code reviewer providing thoughtful, constructive feedback that helps developers grow.
 
-## Review Philosophy
-- Focus on the 5 most impactful insights that will genuinely improve the code
-- Explain the "why" behind each suggestion to teach, not just point out issues
-- Think architecturally about design patterns, maintainability, and long-term implications
-- Be constructive and motivational - build up developers, don't tear them down
-- Provide actionable suggestions with clear reasoning
-- Use markdown formatting to make your comments clear and well-structured
-- Write comments as long as needed to fully explain the insight and teach effectively
+## Review Philosophy - Positive-First Mentoring
+- **Always start by identifying something positive** about the code before addressing any issues
+- Focus on up to 5 most impactful insights that will genuinely improve the code
+- Explain the "why" behind each suggestion with real-world examples to teach, not just point out issues
+- Use explicit impact categorization: Critical (security/bugs), Important (stability/performance), or Helpful (maintainability)
+- Build developers up through encouraging, educational feedback
 
-## What to Look For
-**Architecture & Design:**
-- SOLID principles violations and opportunities
-- Design patterns that could improve the solution
-- Anti-patterns that should be refactored
-- Code organization and separation of concerns
+## Required Review Structure
+**Step 1: Positive Recognition** - Find at least one good aspect (naming, patterns, error handling, learning evidence)
+**Step 2: Impact-Prioritized Suggestions** - Address issues by impact level with educational context
 
-**Code Quality:**
-- Readability and expressiveness
-- Error handling and edge cases
-- Performance implications
-- Security considerations (OWASP guidelines)
+## Impact Categories (Required for each comment)
+**🔴 CRITICAL** - Security vulnerabilities, data corruption risks, broken functionality
+**🟡 IMPORTANT** - Poor error handling, performance issues, stability concerns  
+**🟢 HELPFUL** - Code organization, naming clarity, maintainability improvements
 
-**Best Practices:**
-- Language/framework-specific conventions
-- Maintainability and future-proofing
-- Code reusability and DRY principles
-- Documentation and self-documenting code
+## Educational Requirements
+For each suggestion, always explain:
+1. **What** the specific issue is
+2. **Why** it creates real-world problems or risks
+3. **How** to implement the better approach with examples
+4. **Connection** to broader programming principles
 
 ## Communication Style
-- Be specific about what to change and why
-- Include detailed explanations that help the developer learn
-- Acknowledge good practices when you see them
-- Frame suggestions positively ("Consider..." rather than "Don't...")
-- Focus on impact: explain how the change improves the codebase
-- Use markdown formatting for better readability
+- Start with acknowledgment of good practices
+- Frame suggestions as learning opportunities ("This pattern teaches us...")
+- Include concrete examples showing before/after
+- Connect individual suggestions to larger software engineering principles
+- Use clear impact labels so developers know what to prioritize first
 
 ## Output Guidelines
-- Limit yourself to 5 high-impact comments maximum (could be less)
-- Each comment should teach something valuable
-- Skip minor style issues unless they affect readability significantly
-- Prioritize comments that prevent bugs, improve architecture, or enhance maintainability
-- Write comprehensive comments that fully explain the reasoning
+- Maximum 5 comments, each teaching something valuable
+- Each comment must include impact level and educational context
+- Skip minor style issues unless they significantly affect readability
+- Write comprehensive explanations that build developer expertise over time
 
-Remember: You're not just reviewing code, you're helping a colleague become a better developer.`,
+Remember: Transform each review into a mentoring session that builds both immediate code quality and long-term developer skills.
+
+## CRITICAL RESPONSE FORMAT - READ CAREFULLY
+⚠️ ATTENTION: You MUST respond with ONLY a raw JSON array. NO exceptions.
+
+✅ REQUIRED FORMAT (copy this structure exactly):
+[{"file":"path/to/file.js","line":10,"comment":"Your detailed comment here"}]
+
+✅ For no issues, return EXACTLY this:
+[]
+
+🚫 FORBIDDEN - These will cause system failures:
+- Markdown code blocks (NO triple backticks with json)
+- Any text before the JSON array
+- Any text after the JSON array  
+- Any explanatory text
+- Any formatting other than raw JSON
+
+🔴 EXAMPLES OF WHAT NOT TO DO:
+❌ Wrapping JSON in markdown code blocks
+❌ Here is my review: [...]
+❌ [{"file": "test.js"}] // comment
+❌ The code looks good: []
+
+✅ EXAMPLES OF CORRECT FORMAT:
+✓ [{"file":"src/test.js","line":5,"comment":"Consider adding error handling"}]
+✓ []
+✓ [{"file":"app.js","comment":"Good implementation overall"}]
+
+Required JSON properties:
+- "file": exact file path from diff (required)
+- "line": line number (optional)  
+- "comment": your review feedback (required)
+
+⚠️ FINAL WARNING: Your response must start with '[' as the very first character and end with ']' as the very last character. Nothing else.`,
     max_comments: 5,
     ignore_patterns: [
         "*.lock",
@@ -762,7 +789,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.getRepositoryContext = exports.getPackageInfo = exports.getFileContent = exports.getRepositoryStructure = exports.getIncrementalDiff = exports.saveReviewState = exports.getReviewState = exports.getPRCommits = exports.postReview = exports.checkUserPermissions = exports.getPRDiff = void 0;
+exports.getRepositoryContext = exports.getExistingReviewComments = exports.getPackageInfo = exports.getFileContent = exports.getRepositoryStructure = exports.getIncrementalDiff = exports.saveReviewState = exports.getReviewState = exports.getPRCommits = exports.postReview = exports.checkUserPermissions = exports.getPRDiff = void 0;
 const logger_1 = __nccwpck_require__(9741);
 const path = __importStar(__nccwpck_require__(1017));
 // Effect: Get PR diff from GitHub API
@@ -1098,11 +1125,48 @@ const getPackageInfo = async (octokit, context, sha) => {
         return null;
     }
     catch (error) {
-        logger_1.Logger.error(`Failed to get package.json: ${error}`);
+        // Silently handle missing package.json - it's normal for non-Node.js projects
         return null;
     }
 };
 exports.getPackageInfo = getPackageInfo;
+// Effect: Get existing PR review comments
+const getExistingReviewComments = async (octokit, context, pr) => {
+    try {
+        // Get review comments (line-specific comments)
+        const { data: reviewComments } = await octokit.rest.pulls.listReviewComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            pull_number: pr.number,
+        });
+        // Get general issue comments  
+        const { data: issueComments } = await octokit.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: pr.number,
+        });
+        // Combine and filter AI review comments, excluding state tracking comments
+        const existingComments = [];
+        reviewComments.forEach(comment => {
+            if (comment.user?.login === 'github-actions[bot]' &&
+                !comment.body?.includes('BAD_BUGGY_REVIEW_STATE')) {
+                existingComments.push(comment.body || '');
+            }
+        });
+        issueComments.forEach(comment => {
+            if (comment.user?.login === 'github-actions[bot]' &&
+                !comment.body?.includes('BAD_BUGGY_REVIEW_STATE')) {
+                existingComments.push(comment.body || '');
+            }
+        });
+        return existingComments.filter(comment => comment.trim().length > 0);
+    }
+    catch (error) {
+        logger_1.Logger.error(`Failed to get existing review comments: ${error}`);
+        return [];
+    }
+};
+exports.getExistingReviewComments = getExistingReviewComments;
 // Effect: Get repository context (simplified)
 const getRepositoryContext = async (octokit, context, pr) => {
     const structure = await (0, exports.getRepositoryStructure)(octokit, context, pr);
@@ -1475,7 +1539,7 @@ const token_counter_1 = __nccwpck_require__(1690);
  * Service for handling Bad Buggy-powered code review operations
  */
 // Build review prompt with repository context and contextual content
-const buildReviewPrompt = (config, chunkContent, repositoryContext) => {
+const buildReviewPrompt = (config, chunkContent, repositoryContext, prContext) => {
     const basePrompt = config.review_prompt.replace("{{DATE}}", new Date().toISOString().split("T")[0]);
     // Add custom prompt if provided
     const fullPrompt = config.custom_prompt
@@ -1517,6 +1581,27 @@ const buildReviewPrompt = (config, chunkContent, repositoryContext) => {
             }
             contextSection += "\n";
         }
+    }
+    // Add PR context if available
+    if (prContext) {
+        contextSection += "\n## Pull Request Context\n\n";
+        contextSection += `**Title:** ${prContext.title}\n`;
+        contextSection += `**Author:** ${prContext.author}\n`;
+        if (prContext.description && prContext.description.trim()) {
+            contextSection += `**Description:** ${prContext.description}\n`;
+        }
+        // Add existing comments to avoid repetition
+        if (prContext.existingComments.length > 0) {
+            contextSection += `\n**Important:** The following feedback has already been provided in previous reviews. DO NOT repeat similar comments:\n`;
+            prContext.existingComments.slice(0, 3).forEach((comment, index) => {
+                const preview = comment.length > 200 ? comment.substring(0, 200) + "..." : comment;
+                contextSection += `${index + 1}. ${preview}\n`;
+            });
+            if (prContext.existingComments.length > 3) {
+                contextSection += `... and ${prContext.existingComments.length - 3} more previous comments\n`;
+            }
+        }
+        contextSection += "\n";
     }
     return `${fullPrompt}${contextSection}
 
@@ -1577,9 +1662,16 @@ const isValidComment = (comment) => {
 // Pure function to parse AI response into ReviewComments
 const parseAIResponse = (responseContent) => {
     let comments = [];
+    // First, clean up the response by removing common markdown formatting
+    let cleanedResponse = responseContent.trim();
+    // Remove markdown code blocks if present
+    cleanedResponse = cleanedResponse.replace(/^```json\s*\n?/i, '');
+    cleanedResponse = cleanedResponse.replace(/\n?```\s*$/i, '');
+    cleanedResponse = cleanedResponse.replace(/^```\s*\n?/i, '');
+    cleanedResponse = cleanedResponse.trim();
     try {
-        // Try to parse the full response first
-        const parsedResponse = JSON.parse(responseContent);
+        // Try to parse the cleaned response first
+        const parsedResponse = JSON.parse(cleanedResponse);
         comments = parsedResponse
             .filter((comment) => {
             if (!isValidComment(comment)) {
@@ -1604,13 +1696,13 @@ const parseAIResponse = (responseContent) => {
         });
     }
     catch (e) {
-        // If that fails, try to extract JSON from the response
+        // If that fails, try to extract JSON from the cleaned response
         try {
             // More robust JSON extraction - find the first [ and last ]
-            const startIndex = responseContent.indexOf('[');
-            const lastIndex = responseContent.lastIndexOf(']');
+            const startIndex = cleanedResponse.indexOf('[');
+            const lastIndex = cleanedResponse.lastIndexOf(']');
             if (startIndex !== -1 && lastIndex !== -1 && lastIndex > startIndex) {
-                const jsonString = responseContent.substring(startIndex, lastIndex + 1);
+                const jsonString = cleanedResponse.substring(startIndex, lastIndex + 1);
                 const parsedResponse = JSON.parse(jsonString);
                 comments = parsedResponse
                     .filter((comment) => {
@@ -1636,24 +1728,74 @@ const parseAIResponse = (responseContent) => {
                 });
             }
             else {
-                core.warning("Failed to parse AI response as JSON - no JSON array found");
+                core.warning("Failed to parse AI response as JSON - no JSON array found. The AI may have included text outside the JSON format.");
                 core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
+                core.info("💡 Tip: Check if the AI model is following the JSON format instructions in the prompt.");
                 comments = [];
             }
         }
         catch (e2) {
-            core.warning("Failed to parse AI response as JSON");
-            core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
-            comments = [];
+            // Final fallback: try to find individual JSON objects
+            try {
+                const jsonMatches = cleanedResponse.match(/\{[^{}]*"file"[^{}]*\}/g);
+                if (jsonMatches && jsonMatches.length > 0) {
+                    const parsedComments = jsonMatches
+                        .map(match => {
+                        try {
+                            return JSON.parse(match);
+                        }
+                        catch {
+                            return null;
+                        }
+                    })
+                        .filter((comment) => comment && isValidComment(comment))
+                        .map((comment) => {
+                        const reviewComment = {
+                            path: comment.file,
+                            body: comment.comment,
+                            commentType: comment.line !== undefined || comment.start_line !== undefined ? 'diff' : 'file',
+                        };
+                        if (comment.line !== undefined) {
+                            reviewComment.line = comment.line;
+                        }
+                        if (comment.start_line !== undefined) {
+                            reviewComment.start_line = comment.start_line;
+                        }
+                        return reviewComment;
+                    });
+                    if (parsedComments.length > 0) {
+                        core.info(`💡 Successfully recovered ${parsedComments.length} comments using fallback parsing.`);
+                        comments = parsedComments;
+                    }
+                    else {
+                        core.warning("Failed to parse AI response as JSON - the response may contain invalid JSON syntax.");
+                        core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
+                        core.info("💡 Tip: This could indicate the AI model isn't compatible with structured JSON responses. Consider using a different model.");
+                        comments = [];
+                    }
+                }
+                else {
+                    core.warning("Failed to parse AI response as JSON - the response may contain invalid JSON syntax.");
+                    core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
+                    core.info("💡 Tip: This could indicate the AI model isn't compatible with structured JSON responses. Consider using a different model.");
+                    comments = [];
+                }
+            }
+            catch (e3) {
+                core.warning("Failed to parse AI response as JSON - the response may contain invalid JSON syntax.");
+                core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
+                core.info("💡 Tip: This could indicate the AI model isn't compatible with structured JSON responses. Consider using a different model.");
+                comments = [];
+            }
         }
     }
     return comments;
 };
 exports.parseAIResponse = parseAIResponse;
 // Effect: Review a single chunk with repository context using secure credential management
-const reviewChunk = async (chunk, config, provider, model) => {
+const reviewChunk = async (chunk, config, provider, model, prContext) => {
     // Always use repository context if available (simplified approach)
-    const prompt = (0, exports.buildReviewPrompt)(config, chunk.content, chunk.repositoryContext);
+    const prompt = (0, exports.buildReviewPrompt)(config, chunk.content, chunk.repositoryContext, prContext);
     core.info(`🔗 Calling AI provider: ${provider} with model: ${model}`);
     core.info(`📝 Prompt length: ${prompt.length} characters`);
     if (chunk.repositoryContext) {
@@ -2348,13 +2490,28 @@ class ReviewWorkflow {
             };
         }
         logger_1.Logger.reviewStart();
+        // Gather PR context for improved reviews
+        const existingComments = await (0, github_api_1.getExistingReviewComments)(this.octokit, this.context, pr);
+        const prContext = {
+            title: pr.title || 'No title',
+            description: pr.body || '',
+            author: pr.user?.login || 'unknown',
+            existingComments
+        };
+        core.info(`📝 PR Context: "${prContext.title}" by ${prContext.author}`);
+        if (prContext.description) {
+            core.info(`📖 PR Description: ${prContext.description.substring(0, 100)}${prContext.description.length > 100 ? '...' : ''}`);
+        }
+        if (existingComments.length > 0) {
+            core.info(`💬 Found ${existingComments.length} existing review comments to avoid repetition`);
+        }
         // Process chunks in parallel for better performance
         const chunkPromises = chunks.map(async (chunk, index) => {
             const chunkNumber = index + 1;
             logger_1.Logger.chunkReview(chunkNumber, chunks.length, chunk.content.length, chunk.fileChanges.map(f => f.filename));
             logger_1.Logger.aiProviderCall(chunkNumber, this.inputs.aiProvider, this.inputs.model);
             const startTime = Date.now();
-            const { comments, tokens } = await (0, ai_review_1.reviewChunk)(chunk, this.config, this.inputs.aiProvider, this.inputs.model);
+            const { comments, tokens } = await (0, ai_review_1.reviewChunk)(chunk, this.config, this.inputs.aiProvider, this.inputs.model, prContext);
             const duration = Date.now() - startTime;
             logger_1.Logger.chunkResults(chunkNumber, comments.length, tokens.input, tokens.output, duration);
             logger_1.Logger.chunkIssues(chunkNumber, comments);

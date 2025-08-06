@@ -85,6 +85,12 @@ export interface DiffChunk {
     repositoryContext?: RepositoryContext;
     contextualContent?: Record<string, string>;
 }
+export interface PRContext {
+    title: string;
+    description: string;
+    author: string;
+    existingComments: string[];
+}
 export interface FileChange {
     filename: string;
     status: "added" | "modified" | "removed" | "renamed";

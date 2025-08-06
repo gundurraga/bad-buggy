@@ -1,12 +1,12 @@
 import * as core from '@actions/core';
 import * as github from '@actions/github';
-import { ActionInputs, ReviewConfig, TokenUsage, ReviewComment, PullRequest, User, FileChange, ReviewState, RepositoryContext } from '../types';
+import { ActionInputs, ReviewConfig, TokenUsage, ReviewComment, PullRequest, User, FileChange, ReviewState, RepositoryContext, PRContext } from '../types';
 import { validateInputs, validateConfig, validateAndThrow } from '../config';
 import { validateSecurity } from '../domains/security';
 import { chunkDiff, processComments, processIncrementalDiff } from '../domains/review';
 import { calculateCost, accumulateTokens } from '../domains/cost';
 import { formatReviewBody } from '../domains/github';
-import { getPRDiff, postReview, checkUserPermissions, getReviewState, saveReviewState, getIncrementalDiff, getRepositoryContext } from '../effects/github-api';
+import { getPRDiff, postReview, checkUserPermissions, getReviewState, saveReviewState, getIncrementalDiff, getRepositoryContext, getExistingReviewComments } from '../effects/github-api';
 import { reviewChunk } from './ai-review';
 import { Logger } from './logger';
 
@@ -204,6 +204,23 @@ export class ReviewWorkflow {
 
     Logger.reviewStart();
     
+    // Gather PR context for improved reviews
+    const existingComments = await getExistingReviewComments(this.octokit, this.context, pr);
+    const prContext: PRContext = {
+      title: pr.title || 'No title',
+      description: pr.body || '',
+      author: pr.user?.login || 'unknown',
+      existingComments
+    };
+    
+    core.info(`📝 PR Context: "${prContext.title}" by ${prContext.author}`);
+    if (prContext.description) {
+      core.info(`📖 PR Description: ${prContext.description.substring(0, 100)}${prContext.description.length > 100 ? '...' : ''}`);
+    }
+    if (existingComments.length > 0) {
+      core.info(`💬 Found ${existingComments.length} existing review comments to avoid repetition`);
+    }
+    
     // Process chunks in parallel for better performance
     const chunkPromises = chunks.map(async (chunk, index) => {
       const chunkNumber = index + 1;
@@ -216,7 +233,8 @@ export class ReviewWorkflow {
         chunk,
         this.config,
         this.inputs.aiProvider,
-        this.inputs.model
+        this.inputs.model,
+        prContext
       );
       const duration = Date.now() - startTime;
 

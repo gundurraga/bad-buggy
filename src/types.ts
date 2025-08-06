@@ -101,6 +101,13 @@ export interface DiffChunk {
   contextualContent?: Record<string, string>; // ±100 lines around changes
 }
 
+export interface PRContext {
+  title: string;
+  description: string;
+  author: string;
+  existingComments: string[]; // Previous review comments to avoid repetition
+}
+
 export interface FileChange {
   filename: string;
   status: "added" | "modified" | "removed" | "renamed";

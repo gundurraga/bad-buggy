@@ -160,7 +160,8 @@ The more context you provide, the more targeted and valuable the reviews become.
 ### **💡 Model suggestions:**
 
 Choose based on your needs - Bad Buggy works great with any model:
-- **Latest models**: `claude-sonnet-4-20250514`, `gpt-4o`, `gemini-pro`  
+
+- **Latest models**: `claude-sonnet-4-20250514`, `gpt-4o`, `gemini-pro`
 - **Budget-friendly**: `claude-3-5-haiku`, `gpt-4o-mini`
 - **Specialized**: Browse 400+ models on OpenRouter
 
@@ -176,10 +177,17 @@ Bad Buggy automatically fetches current pricing from providers, so you always se
 - ✅ Verify the workflow runs without errors in Actions tab
 - ✅ Make sure your PR has actual code changes (not just README updates)
 
-**Permission errors?**
+**Permission errors (`Resource not accessible by integration`)?**
 
-- ✅ The workflow file includes proper `permissions:` section (see setup above)
-- ✅ Repository Settings → Actions → General → "Read and write permissions"
+This is the most common issue, especially in private repositories. Here's how to fix it:
+
+1. **Go to your repository's Settings → Actions → General**
+2. **Scroll down to "Workflow permissions"**
+3. **Select "Read and write permissions"**
+4. **Check "Allow GitHub Actions to create and approve pull requests"**
+5. **Click Save**
+
+This allows Bad Buggy to post review comments on your pull requests.
 
 **Want more help?** [Open an issue](https://github.com/gundurraga/bad-buggy/issues) - we respond quickly!
 

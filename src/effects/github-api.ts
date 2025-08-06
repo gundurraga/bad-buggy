@@ -449,6 +449,51 @@ export const getPackageInfo = async (
   }
 };
 
+// Effect: Get existing PR review comments
+export const getExistingReviewComments = async (
+  octokit: ReturnType<typeof getOctokit>,
+  context: Context,
+  pr: PullRequest
+): Promise<string[]> => {
+  try {
+    // Get review comments (line-specific comments)
+    const { data: reviewComments } = await octokit.rest.pulls.listReviewComments({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      pull_number: pr.number,
+    });
+
+    // Get general issue comments  
+    const { data: issueComments } = await octokit.rest.issues.listComments({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      issue_number: pr.number,
+    });
+
+    // Combine and filter AI review comments, excluding state tracking comments
+    const existingComments: string[] = [];
+    
+    reviewComments.forEach(comment => {
+      if (comment.user?.login === 'github-actions[bot]' && 
+          !comment.body?.includes('BAD_BUGGY_REVIEW_STATE')) {
+        existingComments.push(comment.body || '');
+      }
+    });
+
+    issueComments.forEach(comment => {
+      if (comment.user?.login === 'github-actions[bot]' && 
+          !comment.body?.includes('BAD_BUGGY_REVIEW_STATE')) {
+        existingComments.push(comment.body || '');
+      }
+    });
+
+    return existingComments.filter(comment => comment.trim().length > 0);
+  } catch (error) {
+    Logger.error(`Failed to get existing review comments: ${error}`);
+    return [];
+  }
+};
+
 // Effect: Get repository context (simplified)
 export const getRepositoryContext = async (
   octokit: ReturnType<typeof getOctokit>,

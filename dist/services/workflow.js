@@ -155,13 +155,28 @@ class ReviewWorkflow {
             };
         }
         logger_1.Logger.reviewStart();
+        // Gather PR context for improved reviews
+        const existingComments = await (0, github_api_1.getExistingReviewComments)(this.octokit, this.context, pr);
+        const prContext = {
+            title: pr.title || 'No title',
+            description: pr.body || '',
+            author: pr.user?.login || 'unknown',
+            existingComments
+        };
+        core.info(`📝 PR Context: "${prContext.title}" by ${prContext.author}`);
+        if (prContext.description) {
+            core.info(`📖 PR Description: ${prContext.description.substring(0, 100)}${prContext.description.length > 100 ? '...' : ''}`);
+        }
+        if (existingComments.length > 0) {
+            core.info(`💬 Found ${existingComments.length} existing review comments to avoid repetition`);
+        }
         // Process chunks in parallel for better performance
         const chunkPromises = chunks.map(async (chunk, index) => {
             const chunkNumber = index + 1;
             logger_1.Logger.chunkReview(chunkNumber, chunks.length, chunk.content.length, chunk.fileChanges.map(f => f.filename));
             logger_1.Logger.aiProviderCall(chunkNumber, this.inputs.aiProvider, this.inputs.model);
             const startTime = Date.now();
-            const { comments, tokens } = await (0, ai_review_1.reviewChunk)(chunk, this.config, this.inputs.aiProvider, this.inputs.model);
+            const { comments, tokens } = await (0, ai_review_1.reviewChunk)(chunk, this.config, this.inputs.aiProvider, this.inputs.model, prContext);
             const duration = Date.now() - startTime;
             logger_1.Logger.chunkResults(chunkNumber, comments.length, tokens.input, tokens.output, duration);
             logger_1.Logger.chunkIssues(chunkNumber, comments);

@@ -5,6 +5,7 @@ import {
   TokenUsage,
   DiffChunk,
   RepositoryContext,
+  PRContext,
 } from "../types";
 
 interface AICommentInput {
@@ -25,7 +26,8 @@ import { TokenCounterFactory } from "./token-counter";
 export const buildReviewPrompt = (
   config: ReviewConfig,
   chunkContent: string,
-  repositoryContext?: RepositoryContext
+  repositoryContext?: RepositoryContext,
+  prContext?: PRContext
 ): string => {
   const basePrompt = config.review_prompt.replace(
     "{{DATE}}",
@@ -85,6 +87,29 @@ export const buildReviewPrompt = (
 
       contextSection += "\n";
     }
+  }
+
+  // Add PR context if available
+  if (prContext) {
+    contextSection += "\n## Pull Request Context\n\n";
+    contextSection += `**Title:** ${prContext.title}\n`;
+    contextSection += `**Author:** ${prContext.author}\n`;
+    if (prContext.description && prContext.description.trim()) {
+      contextSection += `**Description:** ${prContext.description}\n`;
+    }
+    
+    // Add existing comments to avoid repetition
+    if (prContext.existingComments.length > 0) {
+      contextSection += `\n**Important:** The following feedback has already been provided in previous reviews. DO NOT repeat similar comments:\n`;
+      prContext.existingComments.slice(0, 3).forEach((comment, index) => {
+        const preview = comment.length > 200 ? comment.substring(0, 200) + "..." : comment;
+        contextSection += `${index + 1}. ${preview}\n`;
+      });
+      if (prContext.existingComments.length > 3) {
+        contextSection += `... and ${prContext.existingComments.length - 3} more previous comments\n`;
+      }
+    }
+    contextSection += "\n";
   }
 
   return `${fullPrompt}${contextSection}
@@ -307,13 +332,15 @@ export const reviewChunk = async (
   chunk: DiffChunk,
   config: ReviewConfig,
   provider: "anthropic" | "openrouter",
-  model: string
+  model: string,
+  prContext?: PRContext
 ): Promise<{ comments: ReviewComment[]; tokens: TokenUsage }> => {
   // Always use repository context if available (simplified approach)
   const prompt = buildReviewPrompt(
     config,
     chunk.content,
-    chunk.repositoryContext
+    chunk.repositoryContext,
+    prContext
   );
 
   core.info(`🔗 Calling AI provider: ${provider} with model: ${model}`);

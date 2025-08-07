@@ -27,10 +27,9 @@ npm run compile    # TypeScript compilation only
 npm run dev        # Watch mode for development
 ```
 
-### Testing and Quality
+### Code Quality
 ```bash
-npm test          # Run Jest tests
-npm run lint      # ESLint on src/**/*.ts
+npm run lint      # ESLint on src/**/*.ts with TypeScript rules
 ```
 
 ### Local Development
@@ -88,10 +87,12 @@ Users can override defaults via `.github/ai-review-config.yml`:
 - Only reviews new commits since last review
 - Contextual awareness of previous reviews
 
-### Smart Context
+### Enhanced Context System
 - Repository structure analysis
-- ~100 lines of context around changes
+- ±150 lines of context around changes with function boundaries
 - Package.json analysis for project understanding
+- Smart comment categorization to prevent repetitive suggestions
+- Architecture-aware prompting to avoid bad recommendations
 
 ### Cost Optimization
 - Intelligent diff chunking to stay within token limits
@@ -106,32 +107,52 @@ Users can override defaults via `.github/ai-review-config.yml`:
 - Source maps and declarations generated
 - Test files excluded from compilation
 
-### Error Handling
+### Error Handling & Logging
 - Custom error types: `ConfigValidationError`, `AIProviderError`
+- Actionable error messages with specific fix instructions
 - Structured error classification with specific exit codes
-- Comprehensive logging through `Logger` service
+- Comprehensive logging through `Logger` service with detailed progress tracking
+- Enhanced credential validation with provider-specific guidance
 
-### Testing Strategy
-When adding tests, use Jest framework. Test files should be in `**/*.test.ts` pattern (excluded from compilation).
-
-### GitHub Action Specifics
-- Action metadata in `action.yml` 
-- Built artifact is `dist/index.js` (not `dist/main.js`)
+### GitHub Action Integration
+- Action metadata in `action.yml` with comprehensive input definitions
+- Built artifact is `dist/index.js` (bundled with ncc)
 - Requires Node 20 runtime
 - Input validation through GitHub Actions core library
+- Handles both diff-level and file-level comments correctly
+- Supports incremental reviews with state tracking
 
-## Commit and PR Guidelines
+## Release Management
 
-### Commit Messages
-Keep commit messages concise and direct:
-- Use simple present tense: "fix bug" not "fixes bug" or "fixed bug"
-- Start with type: `fix:`, `feat:`, `refactor:`, `docs:`
-- One line summary, details in body if needed
-- Example: `fix: handle multi-line comments in GitHub API`
+### Release Process
+Bad Buggy uses semantic versioning with automated release scripts:
+- `scripts/release.sh` handles version tagging and GitHub releases
+- Maintains both specific versions (`v1.2.1`) and major version pointers (`v1`)
+- Comprehensive pre-release checks (lint, build validation)
+- Automatic cost impact documentation
 
-### Pull Request Descriptions
-Keep PR descriptions focused and brief:
-- Clear title describing the change
-- Simple bullet list of what changed
-- Avoid lengthy explanations unless complex
-- Include cost/performance impacts if relevant
+### Security Best Practices
+- Commit SHA pinning recommended for production use
+- Fork-based PR handling with proper security checks
+- API key management through `CredentialManager` singleton
+- Transparent cost tracking and usage monitoring
+
+## Bad Buggy Philosophy
+
+### Educational Focus
+- Provides constructive, learning-oriented feedback
+- Focuses on architecture and design patterns
+- Maximum 5 high-impact comments per review
+- Avoids overwhelming developers with minor issues
+
+### Provider Neutrality
+- No favoritism towards any AI provider
+- Real-time pricing APIs (no hardcoded costs)
+- Consistent experience across all supported models
+- User choice prioritized over opinionated defaults
+
+### Cost Transparency
+- Per-review cost breakdowns with detailed analysis
+- Reviews-per-dollar efficiency metrics
+- Monthly usage estimates for budgeting
+- No hidden fees or surprise charges

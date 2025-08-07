@@ -146,7 +146,15 @@ export const postReview = async (
     }
   }
 
-  const reviewComments = validatedComments.map((comment) => {
+  // Separate file-level comments from diff comments
+  const diffComments = validatedComments.filter(
+    (comment) => comment.line !== undefined || comment.start_line !== undefined
+  );
+  const fileComments = validatedComments.filter(
+    (comment) => comment.line === undefined && comment.start_line === undefined
+  );
+
+  const reviewComments = diffComments.map((comment) => {
     const baseComment = {
       path: comment.path,
       body: comment.body,
@@ -169,18 +177,40 @@ export const postReview = async (
       };
     }
     
-    // File-level comment without line
     return baseComment;
   });
 
-  await octokit.rest.pulls.createReview({
-    owner: context.repo.owner,
-    repo: context.repo.repo,
-    pull_number: pr.number,
-    body: body,
-    event: "COMMENT",
-    comments: reviewComments,
-  });
+  // Post diff-level review with comments
+  if (reviewComments.length > 0) {
+    await octokit.rest.pulls.createReview({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      pull_number: pr.number,
+      body: body,
+      event: "COMMENT",
+      comments: reviewComments,
+    });
+  } else {
+    // If no diff comments, post the body as a general review
+    await octokit.rest.pulls.createReview({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      pull_number: pr.number,
+      body: body,
+      event: "COMMENT",
+    });
+  }
+
+  // Post file-level comments as separate issue comments
+  for (const fileComment of fileComments) {
+    const fileCommentBody = `**📁 File: \`${fileComment.path}\`**\n\n${fileComment.body}`;
+    await octokit.rest.issues.createComment({
+      owner: context.repo.owner,
+      repo: context.repo.repo,
+      issue_number: pr.number, // PR numbers are also issue numbers
+      body: fileCommentBody,
+    });
+  }
 };
 
 // Effect: Get commits for incremental review

@@ -143,27 +143,53 @@ The custom prompt should provide context that helps the AI understand your speci
 
 The more context you provide, the more targeted and valuable the reviews become.
 
-### Always Enabled Features
+## Features
 
-- ✅ **Incremental reviews** - Only reviews new changes since last review
-- ✅ **Smart context** - Provides ~100 lines around each change for better understanding
-- ✅ **Repository structure** - AI understands your project layout
-- ✅ **Cost optimization** - Efficient chunking and context management
+- 🔄 **Incremental reviews** - Only reviews new commits since last review with state tracking
+- 📄 **Enhanced context system** - ±150 lines around changes with smart function boundary detection
+- 🧠 **Smart comment categorization** - Prevents repetitive suggestions by analyzing previous feedback
+- 🏗️ **Architecture-aware prompting** - Understands codebase patterns to avoid bad recommendations
+- 🗂️ **Repository structure analysis** - AI understands your project layout and dependencies
+- 💰 **Cost optimization** - Intelligent diff chunking with transparent real-time pricing
+- 💬 **Multi-level commenting** - Both diff-level and file-level insights
+- 🔒 **Security-first design** - Credential management, permission validation, fork handling
+
+## 🧠 AI Context & Review Intelligence
+
+**What context is provided to the LLM for reviews:**
+
+### Repository Context
+- **Project information** - Name, version, description from package.json
+- **Repository structure** - File counts, main languages, key directories
+- **Dependency analysis** - Understanding of your tech stack and frameworks
+
+### Enhanced File Context
+- **±150 lines around changes** - Smart expansion with function boundary detection
+- **Complete functions/classes** - Language-specific patterns for TypeScript, JavaScript, Python, Go, Java
+- **Line numbers** - Precise referencing for targeted feedback
+
+### Previous Review Context
+- **Categorized existing comments** - Security, performance, architecture, code quality
+- **Already-addressed concerns** - Prevents repetition of implemented suggestions
+- **Recent comment history** - Maintains review continuity
+
+### Architectural Context
+- **Codebase patterns** - Understands your specific architectural choices
+- **Type system guidelines** - Knows interface vs type preferences
+- **Design principles** - Functional core/imperative shell, domain-driven design
 
 ## 🤖 AI Provider Options
 
 | Provider       | Best For                      | Models Available                        |
 | -------------- | ----------------------------- | --------------------------------------- |
-| **Anthropic**  | Direct Claude model access    | Claude-4, Claude-3.5, Claude-3          |
+| **Anthropic**  | Direct Claude model access    | Claude-4, Claude-3.5                    |
 | **OpenRouter** | Model variety and flexibility | 400+ models (Claude, GPT, Gemini, etc.) |
 
 ### **💡 Model suggestions:**
 
 Choose based on your needs - Bad Buggy works great with any model:
 
-- **Latest models**: `claude-sonnet-4-20250514`, `gpt-4o`, `gemini-pro`
-- **Budget-friendly**: `claude-3-5-haiku`, `gpt-4o-mini`
-- **Specialized**: Browse 400+ models on OpenRouter
+- **Recommended models**: `claude-sonnet-4-20250514`, `claude-opus-4.1`, `gpt-5`, `qwen3-coder`
 
 ### **💰 Real-time pricing:**
 
@@ -189,8 +215,6 @@ This is the most common issue, especially in private repositories. Here's how to
 
 This allows Bad Buggy to post review comments on your pull requests.
 
-**Want more help?** [Open an issue](https://github.com/gundurraga/bad-buggy/issues) - we respond quickly!
-
 ---
 
 ## 🔒 Security & Best Practices
@@ -200,6 +224,7 @@ This allows Bad Buggy to post review comments on your pull requests.
 For production use, consider these security best practices:
 
 #### **1. Pin to specific commit SHA (Recommended)**
+
 ```yaml
 # ✅ Most secure - pin to specific commit
 - uses: gundurraga/bad-buggy@abc1234567890abcdef1234567890abcdef123456
@@ -210,18 +235,21 @@ For production use, consider these security best practices:
 
 **Why?** Pinning to a commit SHA ensures the exact code version never changes, protecting against supply chain attacks.
 
-**How to get the SHA:** 
+**How to get the SHA:**
+
 - Go to [releases page](https://github.com/gundurraga/bad-buggy/releases)
 - Click on the commit SHA for your chosen version
 - Use the full 40-character SHA in your workflow
 
 #### **2. Fork the repository (Extra security)**
+
 ```yaml
 # ✅ Ultimate security - use your own fork
 - uses: your-username/bad-buggy@your-chosen-commit-sha
 ```
 
 **Benefits:**
+
 - Complete control over the code that runs in your workflows
 - Review all changes before updating
 - No dependency on external repository availability
@@ -241,7 +269,5 @@ If Bad Buggy is helping you write better code, **[give us a star](https://github
 It helps other developers discover this tool and motivates us to keep improving it.
 
 ---
-
-**Built with ❤️ by developers, for developers**
 
 _MIT License - see LICENSE file for details_

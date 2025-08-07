@@ -8,12 +8,12 @@ import {
   PRContext,
 } from "../types";
 
-interface AICommentInput {
+type AICommentInput = {
   file: string;
   line?: number; // Optional for file-level comments
   start_line?: number; // For multi-line comments
   comment: string;
-}
+};
 import { callAIProvider } from "../effects/ai-api";
 import { countTokens } from "../domains/review";
 import { TokenCounterFactory } from "./token-counter";

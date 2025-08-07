@@ -6,20 +6,20 @@ import {
 import { CredentialManager } from "../security/credential-manager";
 
 // Internal pricing interface for service calculations
-interface ModelPricing {
+type ModelPricing = {
   input: number;
   output: number;
-}
+};
 
 // Enhanced interfaces for pricing
-export interface ModelInfo {
+export type ModelInfo = {
   id: string;
   name: string;
   pricing: ModelPricing;
   provider: string;
 }
 
-export interface UsageWithCost {
+export type UsageWithCost = {
   input_tokens: number;
   output_tokens: number;
   cost?: number; // OpenRouter provides this directly
@@ -29,31 +29,31 @@ export interface UsageWithCost {
 }
 
 // API response interfaces
-interface AnthropicModel {
+type AnthropicModel = {
   id: string;
   pricing?: {
     input_tokens_per_million: number;
     output_tokens_per_million: number;
   };
-}
+};
 
-interface AnthropicModelsResponse {
+type AnthropicModelsResponse = {
   data?: AnthropicModel[];
-}
+};
 
-interface OpenRouterModel {
+type OpenRouterModel = {
   id: string;
   pricing?: {
     prompt: string;
     completion: string;
   };
-}
+};
 
-interface OpenRouterModelsResponse {
+type OpenRouterModelsResponse = {
   data?: OpenRouterModel[];
-}
+};
 
-export interface PricingCache {
+export type PricingCache = {
   [modelId: string]: {
     pricing: ModelPricing;
     timestamp: number;

@@ -5,26 +5,26 @@ import { Config } from '../types';
 
 type Octokit = ReturnType<typeof getOctokit>;
 
-interface PullRequest {
+type PullRequest = {
   user: { login: string };
   head: { repo: { full_name: string } };
   base: { repo: { full_name: string } };
   number: number;
-}
+};
 
-interface SecurityCheckResult {
+type SecurityCheckResult = {
   allowed: boolean;
   reason: string;
   message: string | null;
-}
+};
 
-interface CollaboratorPermission {
+type CollaboratorPermission = {
   permission: string;
-}
+};
 
-interface PullRequestFile {
+type PullRequestFile = {
   filename: string;
-}
+};
 
 export async function performSecurityCheck(
   octokit: Octokit,

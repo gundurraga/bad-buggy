@@ -120,7 +120,16 @@ export class ReviewWorkflow {
     const isRepoOwner = triggeringUser.login === repoOwner;
     
     if (!hasRequiredPermission && !isRepoOwner) {
-      throw new Error(`User does not have sufficient permissions to trigger AI reviews. Required: ${REQUIRED_PERMISSIONS.join(' or ')}, Current: ${userPermission}`);
+      throw new Error(
+        `❌ Insufficient permissions to trigger AI reviews\n\n` +
+        `User: ${triggeringUser.login}\n` +
+        `Current permission: ${userPermission}\n` +
+        `Required: ${REQUIRED_PERMISSIONS.join(' or ')}\n\n` +
+        `🔧 Fix: Ask a repository admin to:\n` +
+        `1. Grant you write access to this repository, OR\n` +
+        `2. Add you to the allowed_users list in .github/ai-review-config.yml\n\n` +
+        `💡 Repository owners can always trigger reviews regardless of permissions`
+      );
     }
     
     // Double-check permissions haven't changed during execution

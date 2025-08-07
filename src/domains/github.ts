@@ -64,11 +64,17 @@ export const formatReviewBody = (
   const modelInfo = `**Model:** ${model}`;
   const tokenInfo = `**Tokens:** ${totalTokens.input + totalTokens.output} (${totalTokens.input} input, ${totalTokens.output} output)`;
   
-  // Add cost information if available
+  // Add enhanced cost information if available
   let costSection = '';
   if (costInfo) {
     const reviewsPerDollar = costInfo.totalCost > 0 ? Math.floor(1 / costInfo.totalCost) : 0;
-    costSection = `**Total cost:** $${costInfo.totalCost.toFixed(4)} (equal to ${reviewsPerDollar} reviews per dollar)\n`;
+    const costPerReview = costInfo.totalCost.toFixed(4);
+    const monthlyBudget = (costInfo.totalCost * 100).toFixed(2); // Cost for 100 reviews
+    
+    costSection = `**💰 Cost Analysis:**\n` +
+      `- This review: $${costPerReview}\n` +
+      `- Reviews per dollar: ~${reviewsPerDollar}\n` +
+      `- 100 reviews: ~$${monthlyBudget}\n\n`;
   }
   
   const commentInfo = `**Comments:** ${commentCount}`;

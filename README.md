@@ -38,7 +38,7 @@ jobs:
           fetch-depth: 0
 
       - name: Bad Buggy Code Review
-        uses: gundurraga/bad-buggy@v1
+        uses: gundurraga/bad-buggy@v1 # ⚠️ See security recommendations below
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           ai-provider: "openrouter" # or "anthropic"
@@ -193,12 +193,46 @@ This allows Bad Buggy to post review comments on your pull requests.
 
 ---
 
-## 🔒 Privacy & Security
+## 🔒 Security & Best Practices
+
+### 🛡️ **Production Security Recommendations**
+
+For production use, consider these security best practices:
+
+#### **1. Pin to specific commit SHA (Recommended)**
+```yaml
+# ✅ Most secure - pin to specific commit
+- uses: gundurraga/bad-buggy@abc1234567890abcdef1234567890abcdef123456
+
+# ⚠️ Convenient but less secure - version tags can change
+- uses: gundurraga/bad-buggy@v1
+```
+
+**Why?** Pinning to a commit SHA ensures the exact code version never changes, protecting against supply chain attacks.
+
+**How to get the SHA:** 
+- Go to [releases page](https://github.com/gundurraga/bad-buggy/releases)
+- Click on the commit SHA for your chosen version
+- Use the full 40-character SHA in your workflow
+
+#### **2. Fork the repository (Extra security)**
+```yaml
+# ✅ Ultimate security - use your own fork
+- uses: your-username/bad-buggy@your-chosen-commit-sha
+```
+
+**Benefits:**
+- Complete control over the code that runs in your workflows
+- Review all changes before updating
+- No dependency on external repository availability
+
+### 🔐 **Privacy & Data Handling**
 
 - Your code is sent to your chosen AI provider for review
 - No data is stored by Bad Buggy itself
 - All API keys are handled securely through GitHub Secrets
 - Full audit trail in GitHub Actions logs
+- Review process is stateless - no persistent data storage
 
 ## ⭐ Star us!
 

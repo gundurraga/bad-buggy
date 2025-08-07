@@ -1,29 +1,29 @@
 import { CostCalculation, TokenUsage } from "../types";
-interface ModelPricing {
+type ModelPricing = {
     input: number;
     output: number;
-}
-export interface ModelInfo {
+};
+export type ModelInfo = {
     id: string;
     name: string;
     pricing: ModelPricing;
     provider: string;
-}
-export interface UsageWithCost {
+};
+export type UsageWithCost = {
     input_tokens: number;
     output_tokens: number;
     cost?: number;
     cost_details?: {
         upstream_inference_cost?: number;
     };
-}
-export interface PricingCache {
+};
+export type PricingCache = {
     [modelId: string]: {
         pricing: ModelPricing;
         timestamp: number;
         ttl: number;
     };
-}
+};
 export declare class PricingService {
     private provider;
     private cache;

@@ -2,7 +2,7 @@ import { Context } from '@actions/github/lib/context';
 import { getOctokit } from '@actions/github';
 import { Config } from '../types';
 type Octokit = ReturnType<typeof getOctokit>;
-interface PullRequest {
+type PullRequest = {
     user: {
         login: string;
     };
@@ -17,12 +17,12 @@ interface PullRequest {
         };
     };
     number: number;
-}
-interface SecurityCheckResult {
+};
+type SecurityCheckResult = {
     allowed: boolean;
     reason: string;
     message: string | null;
-}
+};
 export declare function performSecurityCheck(octokit: Octokit, context: Context, pr: PullRequest, config: Config): Promise<SecurityCheckResult>;
 export {};
 //# sourceMappingURL=access-control.d.ts.map

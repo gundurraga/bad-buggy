@@ -50,7 +50,73 @@ const extractLineNumbers = (patch: string): { start: number; end: number }[] => 
   return ranges;
 };
 
-// Get contextual content (±100 lines around changes)
+// Helper function to expand context to include complete function/class boundaries
+const expandToFunctionBoundaries = (
+  lines: string[], 
+  minLine: number, 
+  maxLine: number, 
+  filename: string
+): { start: number; end: number } => {
+  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  
+  // Language-specific patterns for function/class boundaries
+  const patterns = {
+    ts: [/^\s*(export\s+)?(async\s+)?function\s+\w+/, /^\s*(export\s+)?class\s+\w+/, /^\s*(export\s+)?interface\s+\w+/, /^\s*(export\s+)?type\s+\w+/],
+    js: [/^\s*(export\s+)?(async\s+)?function\s+\w+/, /^\s*(export\s+)?class\s+\w+/],
+    py: [/^\s*(async\s+)?def\s+\w+/, /^\s*class\s+\w+/],
+    go: [/^\s*func\s+(\w+\s+)?\w+/, /^\s*type\s+\w+/],
+    java: [/^\s*(public|private|protected)?\s*(static\s+)?[\w<>[\]]+\s+\w+\s*\(/, /^\s*(public|private|protected)?\s*(abstract\s+|final\s+)?(class|interface)\s+\w+/],
+    default: [/^\s*[\w\s]*function\s*\w*/, /^\s*[\w\s]*class\s*\w*/]
+  };
+  
+  const functionPatterns = patterns[ext as keyof typeof patterns] || patterns.default;
+  
+  let expandedStart = minLine;
+  let expandedEnd = maxLine;
+  
+  // Look backwards for function start
+  for (let i = minLine - 1; i >= Math.max(0, minLine - 50); i--) {
+    const line = lines[i];
+    if (functionPatterns.some(pattern => pattern.test(line))) {
+      expandedStart = i + 1;
+      break;
+    }
+  }
+  
+  // Look forwards for function end (closing braces, dedentation)
+  let braceCount = 0;
+  let baseIndent = -1;
+  
+  for (let i = expandedStart - 1; i < Math.min(lines.length, maxLine + 50); i++) {
+    const line = lines[i];
+    
+    if (baseIndent === -1 && line.trim()) {
+      baseIndent = line.search(/\S/);
+    }
+    
+    // Count braces for languages that use them
+    if (['ts', 'js', 'java', 'go'].includes(ext)) {
+      braceCount += (line.match(/\{/g) || []).length;
+      braceCount -= (line.match(/\}/g) || []).length;
+      
+      if (braceCount === 0 && i > minLine && line.includes('}')) {
+        expandedEnd = Math.min(i + 2, lines.length);
+        break;
+      }
+    }
+    // For Python, use indentation
+    else if (ext === 'py') {
+      if (line.trim() && baseIndent !== -1 && line.search(/\S/) <= baseIndent && i > minLine) {
+        expandedEnd = i;
+        break;
+      }
+    }
+  }
+  
+  return { start: expandedStart, end: expandedEnd };
+};
+
+// Get enhanced contextual content (±150 lines with function boundaries)
 const getContextualContent = async (
   file: FileChange,
   octokit: ReturnType<typeof getOctokit>,
@@ -70,18 +136,25 @@ const getContextualContent = async (
     
     if (ranges.length === 0) return undefined;
 
-    // Calculate the overall range with ±100 lines buffer
-    const minLine = Math.max(1, Math.min(...ranges.map(r => r.start)) - 100);
-    const maxLine = Math.min(lines.length, Math.max(...ranges.map(r => r.end)) + 100);
+    // Enhanced contextual content: ±150 lines with function boundaries
+    const minLine = Math.max(1, Math.min(...ranges.map(r => r.start)) - 150);
+    const maxLine = Math.min(lines.length, Math.max(...ranges.map(r => r.end)) + 150);
     
-    // For small files (<200 lines), include the entire file
-    if (lines.length <= 200) {
+    // For small files (<300 lines), include the entire file
+    if (lines.length <= 300) {
       return fullContent;
     }
     
-    // Extract the contextual lines
-    const contextualLines = lines.slice(minLine - 1, maxLine);
-    return contextualLines.join('\n');
+    // Try to include complete function/class boundaries for better context
+    const adjustedRange = expandToFunctionBoundaries(lines, minLine, maxLine, file.filename);
+    
+    // Extract the contextual lines with line numbers for better reference
+    const contextualLines = lines.slice(adjustedRange.start - 1, adjustedRange.end);
+    const numberedLines = contextualLines.map((line, index) => 
+      `${adjustedRange.start + index}: ${line}`
+    );
+    
+    return numberedLines.join('\n');
   } catch (error) {
     console.warn(`Could not get contextual content for ${file.filename}: ${error}`);
     return undefined;
@@ -119,7 +192,7 @@ export const chunkDiff = async (
       const contextualContent = await getContextualContent(file, octokit, context, sha);
       if (contextualContent) {
         file.contextualContent = contextualContent;
-        content += `\n### Contextual Content (±100 lines around changes):\n\`\`\`\n${contextualContent}\n\`\`\`\n\n`;
+        content += `\n### Contextual Content (±150 lines with function boundaries):\n\`\`\`\n${contextualContent}\n\`\`\`\n\n`;
       }
     }
     

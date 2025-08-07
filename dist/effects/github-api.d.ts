@@ -11,5 +11,6 @@ export declare const getIncrementalDiff: (octokit: ReturnType<typeof getOctokit>
 export declare const getRepositoryStructure: (octokit: ReturnType<typeof getOctokit>, context: Context, pr: PullRequest) => Promise<RepositoryStructure>;
 export declare const getFileContent: (octokit: ReturnType<typeof getOctokit>, context: Context, filePath: string, sha: string) => Promise<string | null>;
 export declare const getPackageInfo: (octokit: ReturnType<typeof getOctokit>, context: Context, sha: string) => Promise<PackageInfo | null>;
+export declare const getExistingReviewComments: (octokit: ReturnType<typeof getOctokit>, context: Context, pr: PullRequest) => Promise<string[]>;
 export declare const getRepositoryContext: (octokit: ReturnType<typeof getOctokit>, context: Context, pr: PullRequest) => Promise<RepositoryContext>;
 //# sourceMappingURL=github-api.d.ts.map

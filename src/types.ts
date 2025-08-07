@@ -98,7 +98,14 @@ export interface DiffChunk {
   content: string;
   fileChanges: FileChange[];
   repositoryContext?: RepositoryContext;
-  contextualContent?: Record<string, string>; // ±100 lines around changes
+  contextualContent?: Record<string, string>; // ±150 lines with function boundaries
+}
+
+export interface PRContext {
+  title: string;
+  description: string;
+  author: string;
+  existingComments: string[]; // Previous review comments to avoid repetition
 }
 
 export interface FileChange {
@@ -108,7 +115,7 @@ export interface FileChange {
   deletions: number;
   changes: number;
   patch?: string;
-  contextualContent?: string; // ±100 lines around changes
+  contextualContent?: string; // ±150 lines with function boundaries
 }
 
 // Incremental review types

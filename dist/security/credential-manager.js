@@ -59,10 +59,18 @@ class CredentialManager {
         this.logAccess(provider, "retrieve");
         const key = this.credentials.get(provider) || this.getFromEnvironment(provider);
         if (!key) {
-            throw new Error(`API key not found for provider: ${provider}`);
+            throw new Error(`❌ API key not found for provider: ${provider}\n\n` +
+                `🔧 Fix: Add your API key as a repository secret:\n` +
+                `1. Go to Settings → Secrets and variables → Actions\n` +
+                `2. Add: ${this.getExpectedSecretName(provider)}\n` +
+                `3. Get your key from: ${this.getProviderUrl(provider)}\n\n` +
+                `💡 Make sure the secret name matches exactly (case-sensitive)`);
         }
         if (!this.validateApiKey(key, provider)) {
-            throw new Error(`Invalid API key format for provider: ${provider}`);
+            throw new Error(`❌ Invalid API key format for provider: ${provider}\n\n` +
+                `Expected format: ${this.getExpectedFormat(provider)}\n` +
+                `Received format: ${key.substring(0, 10)}...\n\n` +
+                `🔧 Fix: Get a valid API key from: ${this.getProviderUrl(provider)}`);
         }
         return key;
     }
@@ -73,7 +81,9 @@ class CredentialManager {
      */
     setApiKey(provider, apiKey) {
         if (!this.validateApiKey(apiKey, provider)) {
-            throw new Error(`Invalid API key format for provider: ${provider}`);
+            throw new Error(`❌ Invalid API key format for provider: ${provider}\n\n` +
+                `Expected format: ${this.getExpectedFormat(provider)}\n` +
+                `🔧 Fix: Get a valid API key from: ${this.getProviderUrl(provider)}`);
         }
         this.credentials.set(provider, apiKey);
         this.logAccess(provider, "store");
@@ -160,6 +170,48 @@ class CredentialManager {
      */
     hasApiKey(provider) {
         return (this.credentials.has(provider) || !!this.getFromEnvironment(provider));
+    }
+    /**
+     * Get expected secret name for provider
+     * @param provider The provider name
+     * @returns Expected GitHub secret name
+     */
+    getExpectedSecretName(provider) {
+        const secretNames = {
+            anthropic: 'ANTHROPIC_API_KEY',
+            openrouter: 'OPENROUTER_API_KEY',
+            openai: 'OPENAI_API_KEY'
+        };
+        return secretNames[provider.toLowerCase()] ||
+            `${provider.toUpperCase()}_API_KEY`;
+    }
+    /**
+     * Get provider URL for getting API keys
+     * @param provider The provider name
+     * @returns URL where users can get API keys
+     */
+    getProviderUrl(provider) {
+        const urls = {
+            anthropic: 'https://console.anthropic.com/settings/keys',
+            openrouter: 'https://openrouter.ai/settings/keys',
+            openai: 'https://platform.openai.com/api-keys'
+        };
+        return urls[provider.toLowerCase()] ||
+            `https://${provider.toLowerCase()}.com`;
+    }
+    /**
+     * Get expected API key format for provider
+     * @param provider The provider name
+     * @returns Expected format description
+     */
+    getExpectedFormat(provider) {
+        const formats = {
+            anthropic: 'sk-ant-... (starts with sk-ant-)',
+            openrouter: 'sk-or-... (starts with sk-or-)',
+            openai: 'sk-... (starts with sk-)'
+        };
+        return formats[provider.toLowerCase()] ||
+            'Valid API key format';
     }
 }
 exports.CredentialManager = CredentialManager;

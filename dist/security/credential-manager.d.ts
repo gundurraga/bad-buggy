@@ -58,5 +58,23 @@ export declare class CredentialManager {
      * @returns True if key exists
      */
     hasApiKey(provider: string): boolean;
+    /**
+     * Get expected secret name for provider
+     * @param provider The provider name
+     * @returns Expected GitHub secret name
+     */
+    private getExpectedSecretName;
+    /**
+     * Get provider URL for getting API keys
+     * @param provider The provider name
+     * @returns URL where users can get API keys
+     */
+    private getProviderUrl;
+    /**
+     * Get expected API key format for provider
+     * @param provider The provider name
+     * @returns Expected format description
+     */
+    private getExpectedFormat;
 }
 //# sourceMappingURL=credential-manager.d.ts.map

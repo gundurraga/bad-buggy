@@ -154,8 +154,13 @@ export class Logger {
   }
 
   static costSummary(totalCost: number, inputCost: number, outputCost: number): void {
+    const reviewsPerDollar = totalCost > 0 ? Math.floor(1 / totalCost) : 0;
+    const monthlyEstimate = (totalCost * 30).toFixed(4); // Estimate for 30 reviews/month
+    
     const costMessage = `💰 AI Review Cost: ${formatCost(totalCost)} (${formatCost(inputCost)} input + ${formatCost(outputCost)} output)`;
     core.info(costMessage);
+    core.info(`📈 Cost efficiency: ~${reviewsPerDollar} reviews per dollar`);
+    core.info(`📅 Monthly estimate: ~$${monthlyEstimate} for 30 reviews`);
   }
 
   static costBreakdown(tokens: TokenUsage, inputCost: number, outputCost: number, totalCost: number): void {

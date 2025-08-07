@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getRepositoryContext = exports.getPackageInfo = exports.getFileContent = exports.getRepositoryStructure = exports.getIncrementalDiff = exports.saveReviewState = exports.getReviewState = exports.getPRCommits = exports.postReview = exports.checkUserPermissions = exports.getPRDiff = void 0;
+exports.getRepositoryContext = exports.getExistingReviewComments = exports.getPackageInfo = exports.getFileContent = exports.getRepositoryStructure = exports.getIncrementalDiff = exports.saveReviewState = exports.getReviewState = exports.getPRCommits = exports.postReview = exports.checkUserPermissions = exports.getPRDiff = void 0;
 const logger_1 = require("../services/logger");
 const path = __importStar(require("path"));
 // Effect: Get PR diff from GitHub API
@@ -132,7 +132,10 @@ const postReview = async (octokit, context, pr, comments, body, fileChanges) => 
             logger_1.Logger.commentFiltering(filteredCount, filteredComments.map((c) => `${c.path}:${c.line}`));
         }
     }
-    const reviewComments = validatedComments.map((comment) => {
+    // Separate file-level comments from diff comments
+    const diffComments = validatedComments.filter((comment) => comment.line !== undefined || comment.start_line !== undefined);
+    const fileComments = validatedComments.filter((comment) => comment.line === undefined && comment.start_line === undefined);
+    const reviewComments = diffComments.map((comment) => {
         const baseComment = {
             path: comment.path,
             body: comment.body,
@@ -152,17 +155,39 @@ const postReview = async (octokit, context, pr, comments, body, fileChanges) => 
                 line: comment.line,
             };
         }
-        // File-level comment without line
         return baseComment;
     });
-    await octokit.rest.pulls.createReview({
-        owner: context.repo.owner,
-        repo: context.repo.repo,
-        pull_number: pr.number,
-        body: body,
-        event: "COMMENT",
-        comments: reviewComments,
-    });
+    // Post diff-level review with comments
+    if (reviewComments.length > 0) {
+        await octokit.rest.pulls.createReview({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            pull_number: pr.number,
+            body: body,
+            event: "COMMENT",
+            comments: reviewComments,
+        });
+    }
+    else {
+        // If no diff comments, post the body as a general review
+        await octokit.rest.pulls.createReview({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            pull_number: pr.number,
+            body: body,
+            event: "COMMENT",
+        });
+    }
+    // Post file-level comments as separate issue comments
+    for (const fileComment of fileComments) {
+        const fileCommentBody = `**📁 File: \`${fileComment.path}\`**\n\n${fileComment.body}`;
+        await octokit.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: pr.number, // PR numbers are also issue numbers
+            body: fileCommentBody,
+        });
+    }
 };
 exports.postReview = postReview;
 // Effect: Get commits for incremental review
@@ -369,11 +394,48 @@ const getPackageInfo = async (octokit, context, sha) => {
         return null;
     }
     catch (error) {
-        logger_1.Logger.error(`Failed to get package.json: ${error}`);
+        // Silently handle missing package.json - it's normal for non-Node.js projects
         return null;
     }
 };
 exports.getPackageInfo = getPackageInfo;
+// Effect: Get existing PR review comments
+const getExistingReviewComments = async (octokit, context, pr) => {
+    try {
+        // Get review comments (line-specific comments)
+        const { data: reviewComments } = await octokit.rest.pulls.listReviewComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            pull_number: pr.number,
+        });
+        // Get general issue comments  
+        const { data: issueComments } = await octokit.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: pr.number,
+        });
+        // Combine and filter AI review comments, excluding state tracking comments
+        const existingComments = [];
+        reviewComments.forEach(comment => {
+            if (comment.user?.login === 'github-actions[bot]' &&
+                !comment.body?.includes('BAD_BUGGY_REVIEW_STATE')) {
+                existingComments.push(comment.body || '');
+            }
+        });
+        issueComments.forEach(comment => {
+            if (comment.user?.login === 'github-actions[bot]' &&
+                !comment.body?.includes('BAD_BUGGY_REVIEW_STATE')) {
+                existingComments.push(comment.body || '');
+            }
+        });
+        return existingComments.filter(comment => comment.trim().length > 0);
+    }
+    catch (error) {
+        logger_1.Logger.error(`Failed to get existing review comments: ${error}`);
+        return [];
+    }
+};
+exports.getExistingReviewComments = getExistingReviewComments;
 // Effect: Get repository context (simplified)
 const getRepositoryContext = async (octokit, context, pr) => {
     const structure = await (0, exports.getRepositoryStructure)(octokit, context, pr);

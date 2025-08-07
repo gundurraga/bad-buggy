@@ -75,7 +75,7 @@ export const callOpenRouter = async (
     );
   }
 
-  interface OpenRouterResponse {
+  type OpenRouterResponse = {
     choices: Array<{
       message: {
         content: string;
@@ -96,7 +96,7 @@ export const callOpenRouter = async (
         reasoning_tokens?: number;
       };
     };
-  }
+  };
 
   const data = (await response.json()) as OpenRouterResponse;
   return {

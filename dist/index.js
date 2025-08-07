@@ -48,50 +48,77 @@ const core = __importStar(__nccwpck_require__(2186));
 exports.DEFAULT_CONFIG = {
     review_prompt: `You are an experienced code reviewer providing thoughtful, constructive feedback that helps developers grow.
 
-## Review Philosophy
-- Focus on the 5 most impactful insights that will genuinely improve the code
-- Explain the "why" behind each suggestion to teach, not just point out issues
-- Think architecturally about design patterns, maintainability, and long-term implications
-- Be constructive and motivational - build up developers, don't tear them down
-- Provide actionable suggestions with clear reasoning
-- Use markdown formatting to make your comments clear and well-structured
-- Write comments as long as needed to fully explain the insight and teach effectively
+## Review Philosophy - Positive-First Mentoring
+- **Always start by identifying something positive** about the code before addressing any issues
+- Focus on up to 5 most impactful insights that will genuinely improve the code
+- Explain the "why" behind each suggestion with real-world examples to teach, not just point out issues
+- Use explicit impact categorization: Critical (security/bugs), Important (stability/performance), or Helpful (maintainability)
+- Build developers up through encouraging, educational feedback
 
-## What to Look For
-**Architecture & Design:**
-- SOLID principles violations and opportunities
-- Design patterns that could improve the solution
-- Anti-patterns that should be refactored
-- Code organization and separation of concerns
+## Required Review Structure
+**Step 1: Positive Recognition** - Find at least one good aspect (naming, patterns, error handling, learning evidence)
+**Step 2: Impact-Prioritized Suggestions** - Address issues by impact level with educational context
 
-**Code Quality:**
-- Readability and expressiveness
-- Error handling and edge cases
-- Performance implications
-- Security considerations (OWASP guidelines)
+## Impact Categories (Required for each comment)
+**🔴 CRITICAL** - Security vulnerabilities, data corruption risks, broken functionality
+**🟡 IMPORTANT** - Poor error handling, performance issues, stability concerns  
+**🟢 HELPFUL** - Code organization, naming clarity, maintainability improvements
 
-**Best Practices:**
-- Language/framework-specific conventions
-- Maintainability and future-proofing
-- Code reusability and DRY principles
-- Documentation and self-documenting code
+## Educational Requirements
+For each suggestion, always explain:
+1. **What** the specific issue is
+2. **Why** it creates real-world problems or risks
+3. **How** to implement the better approach with examples
+4. **Connection** to broader programming principles
 
 ## Communication Style
-- Be specific about what to change and why
-- Include detailed explanations that help the developer learn
-- Acknowledge good practices when you see them
-- Frame suggestions positively ("Consider..." rather than "Don't...")
-- Focus on impact: explain how the change improves the codebase
-- Use markdown formatting for better readability
+- Start with acknowledgment of good practices
+- Frame suggestions as learning opportunities ("This pattern teaches us...")
+- Include concrete examples showing before/after
+- Connect individual suggestions to larger software engineering principles
+- Use clear impact labels so developers know what to prioritize first
 
 ## Output Guidelines
-- Limit yourself to 5 high-impact comments maximum (could be less)
-- Each comment should teach something valuable
-- Skip minor style issues unless they affect readability significantly
-- Prioritize comments that prevent bugs, improve architecture, or enhance maintainability
-- Write comprehensive comments that fully explain the reasoning
+- Maximum 5 comments, each teaching something valuable
+- Each comment must include impact level and educational context
+- Skip minor style issues unless they significantly affect readability
+- Write comprehensive explanations that build developer expertise over time
 
-Remember: You're not just reviewing code, you're helping a colleague become a better developer.`,
+Remember: Transform each review into a mentoring session that builds both immediate code quality and long-term developer skills.
+
+## CRITICAL RESPONSE FORMAT - READ CAREFULLY
+⚠️ ATTENTION: You MUST respond with ONLY a raw JSON array. NO exceptions.
+
+✅ REQUIRED FORMAT (copy this structure exactly):
+[{"file":"path/to/file.js","line":10,"comment":"Your detailed comment here"}]
+
+✅ For no issues, return EXACTLY this:
+[]
+
+🚫 FORBIDDEN - These will cause system failures:
+- Markdown code blocks (NO triple backticks with json)
+- Any text before the JSON array
+- Any text after the JSON array  
+- Any explanatory text
+- Any formatting other than raw JSON
+
+🔴 EXAMPLES OF WHAT NOT TO DO:
+❌ Wrapping JSON in markdown code blocks
+❌ Here is my review: [...]
+❌ [{"file": "test.js"}] // comment
+❌ The code looks good: []
+
+✅ EXAMPLES OF CORRECT FORMAT:
+✓ [{"file":"src/test.js","line":5,"comment":"Consider adding error handling"}]
+✓ []
+✓ [{"file":"app.js","comment":"Good implementation overall"}]
+
+Required JSON properties:
+- "file": exact file path from diff (required)
+- "line": line number (optional)  
+- "comment": your review feedback (required)
+
+⚠️ FINAL WARNING: Your response must start with '[' as the very first character and end with ']' as the very last character. Nothing else.`,
     max_comments: 5,
     ignore_patterns: [
         "*.lock",
@@ -279,11 +306,16 @@ const formatReviewBody = (model, totalTokens, commentCount, prInfo, costInfo) =>
     // Add review details
     const modelInfo = `**Model:** ${model}`;
     const tokenInfo = `**Tokens:** ${totalTokens.input + totalTokens.output} (${totalTokens.input} input, ${totalTokens.output} output)`;
-    // Add cost information if available
+    // Add enhanced cost information if available
     let costSection = '';
     if (costInfo) {
         const reviewsPerDollar = costInfo.totalCost > 0 ? Math.floor(1 / costInfo.totalCost) : 0;
-        costSection = `**Total cost:** $${costInfo.totalCost.toFixed(4)} (equal to ${reviewsPerDollar} reviews per dollar)\n`;
+        const costPerReview = costInfo.totalCost.toFixed(4);
+        const monthlyBudget = (costInfo.totalCost * 100).toFixed(2); // Cost for 100 reviews
+        costSection = `**💰 Cost Analysis:**\n` +
+            `- This review: $${costPerReview}\n` +
+            `- Reviews per dollar: ~${reviewsPerDollar}\n` +
+            `- 100 reviews: ~$${monthlyBudget}\n\n`;
     }
     const commentInfo = `**Comments:** ${commentCount}`;
     summary += `### 🔍 Review Details\n\n${modelInfo}\n${costSection}${tokenInfo}\n${commentInfo}\n\n---\n\n*This review was generated by Bad Buggy code reviewer.*`;
@@ -362,7 +394,57 @@ const extractLineNumbers = (patch) => {
     }
     return ranges;
 };
-// Get contextual content (±100 lines around changes)
+// Helper function to expand context to include complete function/class boundaries
+const expandToFunctionBoundaries = (lines, minLine, maxLine, filename) => {
+    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    // Language-specific patterns for function/class boundaries
+    const patterns = {
+        ts: [/^\s*(export\s+)?(async\s+)?function\s+\w+/, /^\s*(export\s+)?class\s+\w+/, /^\s*(export\s+)?interface\s+\w+/, /^\s*(export\s+)?type\s+\w+/],
+        js: [/^\s*(export\s+)?(async\s+)?function\s+\w+/, /^\s*(export\s+)?class\s+\w+/],
+        py: [/^\s*(async\s+)?def\s+\w+/, /^\s*class\s+\w+/],
+        go: [/^\s*func\s+(\w+\s+)?\w+/, /^\s*type\s+\w+/],
+        java: [/^\s*(public|private|protected)?\s*(static\s+)?[\w<>[\]]+\s+\w+\s*\(/, /^\s*(public|private|protected)?\s*(abstract\s+|final\s+)?(class|interface)\s+\w+/],
+        default: [/^\s*[\w\s]*function\s*\w*/, /^\s*[\w\s]*class\s*\w*/]
+    };
+    const functionPatterns = patterns[ext] || patterns.default;
+    let expandedStart = minLine;
+    let expandedEnd = maxLine;
+    // Look backwards for function start
+    for (let i = minLine - 1; i >= Math.max(0, minLine - 50); i--) {
+        const line = lines[i];
+        if (functionPatterns.some(pattern => pattern.test(line))) {
+            expandedStart = i + 1;
+            break;
+        }
+    }
+    // Look forwards for function end (closing braces, dedentation)
+    let braceCount = 0;
+    let baseIndent = -1;
+    for (let i = expandedStart - 1; i < Math.min(lines.length, maxLine + 50); i++) {
+        const line = lines[i];
+        if (baseIndent === -1 && line.trim()) {
+            baseIndent = line.search(/\S/);
+        }
+        // Count braces for languages that use them
+        if (['ts', 'js', 'java', 'go'].includes(ext)) {
+            braceCount += (line.match(/\{/g) || []).length;
+            braceCount -= (line.match(/\}/g) || []).length;
+            if (braceCount === 0 && i > minLine && line.includes('}')) {
+                expandedEnd = Math.min(i + 2, lines.length);
+                break;
+            }
+        }
+        // For Python, use indentation
+        else if (ext === 'py') {
+            if (line.trim() && baseIndent !== -1 && line.search(/\S/) <= baseIndent && i > minLine) {
+                expandedEnd = i;
+                break;
+            }
+        }
+    }
+    return { start: expandedStart, end: expandedEnd };
+};
+// Get enhanced contextual content (±150 lines with function boundaries)
 const getContextualContent = async (file, octokit, context, sha) => {
     if (file.status === 'removed' || !file.patch) {
         return undefined;
@@ -375,16 +457,19 @@ const getContextualContent = async (file, octokit, context, sha) => {
         const ranges = extractLineNumbers(file.patch);
         if (ranges.length === 0)
             return undefined;
-        // Calculate the overall range with ±100 lines buffer
-        const minLine = Math.max(1, Math.min(...ranges.map(r => r.start)) - 100);
-        const maxLine = Math.min(lines.length, Math.max(...ranges.map(r => r.end)) + 100);
-        // For small files (<200 lines), include the entire file
-        if (lines.length <= 200) {
+        // Enhanced contextual content: ±150 lines with function boundaries
+        const minLine = Math.max(1, Math.min(...ranges.map(r => r.start)) - 150);
+        const maxLine = Math.min(lines.length, Math.max(...ranges.map(r => r.end)) + 150);
+        // For small files (<300 lines), include the entire file
+        if (lines.length <= 300) {
             return fullContent;
         }
-        // Extract the contextual lines
-        const contextualLines = lines.slice(minLine - 1, maxLine);
-        return contextualLines.join('\n');
+        // Try to include complete function/class boundaries for better context
+        const adjustedRange = expandToFunctionBoundaries(lines, minLine, maxLine, file.filename);
+        // Extract the contextual lines with line numbers for better reference
+        const contextualLines = lines.slice(adjustedRange.start - 1, adjustedRange.end);
+        const numberedLines = contextualLines.map((line, index) => `${adjustedRange.start + index}: ${line}`);
+        return numberedLines.join('\n');
     }
     catch (error) {
         console.warn(`Could not get contextual content for ${file.filename}: ${error}`);
@@ -412,7 +497,7 @@ const chunkDiff = async (diff, config, repositoryContext, octokit, context, sha)
             const contextualContent = await getContextualContent(file, octokit, context, sha);
             if (contextualContent) {
                 file.contextualContent = contextualContent;
-                content += `\n### Contextual Content (±100 lines around changes):\n\`\`\`\n${contextualContent}\n\`\`\`\n\n`;
+                content += `\n### Contextual Content (±150 lines with function boundaries):\n\`\`\`\n${contextualContent}\n\`\`\`\n\n`;
             }
         }
         // Add diff content
@@ -762,7 +847,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.getRepositoryContext = exports.getPackageInfo = exports.getFileContent = exports.getRepositoryStructure = exports.getIncrementalDiff = exports.saveReviewState = exports.getReviewState = exports.getPRCommits = exports.postReview = exports.checkUserPermissions = exports.getPRDiff = void 0;
+exports.getRepositoryContext = exports.getExistingReviewComments = exports.getPackageInfo = exports.getFileContent = exports.getRepositoryStructure = exports.getIncrementalDiff = exports.saveReviewState = exports.getReviewState = exports.getPRCommits = exports.postReview = exports.checkUserPermissions = exports.getPRDiff = void 0;
 const logger_1 = __nccwpck_require__(9741);
 const path = __importStar(__nccwpck_require__(1017));
 // Effect: Get PR diff from GitHub API
@@ -861,7 +946,10 @@ const postReview = async (octokit, context, pr, comments, body, fileChanges) => 
             logger_1.Logger.commentFiltering(filteredCount, filteredComments.map((c) => `${c.path}:${c.line}`));
         }
     }
-    const reviewComments = validatedComments.map((comment) => {
+    // Separate file-level comments from diff comments
+    const diffComments = validatedComments.filter((comment) => comment.line !== undefined || comment.start_line !== undefined);
+    const fileComments = validatedComments.filter((comment) => comment.line === undefined && comment.start_line === undefined);
+    const reviewComments = diffComments.map((comment) => {
         const baseComment = {
             path: comment.path,
             body: comment.body,
@@ -881,17 +969,39 @@ const postReview = async (octokit, context, pr, comments, body, fileChanges) => 
                 line: comment.line,
             };
         }
-        // File-level comment without line
         return baseComment;
     });
-    await octokit.rest.pulls.createReview({
-        owner: context.repo.owner,
-        repo: context.repo.repo,
-        pull_number: pr.number,
-        body: body,
-        event: "COMMENT",
-        comments: reviewComments,
-    });
+    // Post diff-level review with comments
+    if (reviewComments.length > 0) {
+        await octokit.rest.pulls.createReview({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            pull_number: pr.number,
+            body: body,
+            event: "COMMENT",
+            comments: reviewComments,
+        });
+    }
+    else {
+        // If no diff comments, post the body as a general review
+        await octokit.rest.pulls.createReview({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            pull_number: pr.number,
+            body: body,
+            event: "COMMENT",
+        });
+    }
+    // Post file-level comments as separate issue comments
+    for (const fileComment of fileComments) {
+        const fileCommentBody = `**📁 File: \`${fileComment.path}\`**\n\n${fileComment.body}`;
+        await octokit.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: pr.number, // PR numbers are also issue numbers
+            body: fileCommentBody,
+        });
+    }
 };
 exports.postReview = postReview;
 // Effect: Get commits for incremental review
@@ -1098,11 +1208,48 @@ const getPackageInfo = async (octokit, context, sha) => {
         return null;
     }
     catch (error) {
-        logger_1.Logger.error(`Failed to get package.json: ${error}`);
+        // Silently handle missing package.json - it's normal for non-Node.js projects
         return null;
     }
 };
 exports.getPackageInfo = getPackageInfo;
+// Effect: Get existing PR review comments
+const getExistingReviewComments = async (octokit, context, pr) => {
+    try {
+        // Get review comments (line-specific comments)
+        const { data: reviewComments } = await octokit.rest.pulls.listReviewComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            pull_number: pr.number,
+        });
+        // Get general issue comments  
+        const { data: issueComments } = await octokit.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: pr.number,
+        });
+        // Combine and filter AI review comments, excluding state tracking comments
+        const existingComments = [];
+        reviewComments.forEach(comment => {
+            if (comment.user?.login === 'github-actions[bot]' &&
+                !comment.body?.includes('BAD_BUGGY_REVIEW_STATE')) {
+                existingComments.push(comment.body || '');
+            }
+        });
+        issueComments.forEach(comment => {
+            if (comment.user?.login === 'github-actions[bot]' &&
+                !comment.body?.includes('BAD_BUGGY_REVIEW_STATE')) {
+                existingComments.push(comment.body || '');
+            }
+        });
+        return existingComments.filter(comment => comment.trim().length > 0);
+    }
+    catch (error) {
+        logger_1.Logger.error(`Failed to get existing review comments: ${error}`);
+        return [];
+    }
+};
+exports.getExistingReviewComments = getExistingReviewComments;
 // Effect: Get repository context (simplified)
 const getRepositoryContext = async (octokit, context, pr) => {
     const structure = await (0, exports.getRepositoryStructure)(octokit, context, pr);
@@ -1319,10 +1466,18 @@ class CredentialManager {
         this.logAccess(provider, "retrieve");
         const key = this.credentials.get(provider) || this.getFromEnvironment(provider);
         if (!key) {
-            throw new Error(`API key not found for provider: ${provider}`);
+            throw new Error(`❌ API key not found for provider: ${provider}\n\n` +
+                `🔧 Fix: Add your API key as a repository secret:\n` +
+                `1. Go to Settings → Secrets and variables → Actions\n` +
+                `2. Add: ${this.getExpectedSecretName(provider)}\n` +
+                `3. Get your key from: ${this.getProviderUrl(provider)}\n\n` +
+                `💡 Make sure the secret name matches exactly (case-sensitive)`);
         }
         if (!this.validateApiKey(key, provider)) {
-            throw new Error(`Invalid API key format for provider: ${provider}`);
+            throw new Error(`❌ Invalid API key format for provider: ${provider}\n\n` +
+                `Expected format: ${this.getExpectedFormat(provider)}\n` +
+                `Received format: ${key.substring(0, 10)}...\n\n` +
+                `🔧 Fix: Get a valid API key from: ${this.getProviderUrl(provider)}`);
         }
         return key;
     }
@@ -1333,7 +1488,9 @@ class CredentialManager {
      */
     setApiKey(provider, apiKey) {
         if (!this.validateApiKey(apiKey, provider)) {
-            throw new Error(`Invalid API key format for provider: ${provider}`);
+            throw new Error(`❌ Invalid API key format for provider: ${provider}\n\n` +
+                `Expected format: ${this.getExpectedFormat(provider)}\n` +
+                `🔧 Fix: Get a valid API key from: ${this.getProviderUrl(provider)}`);
         }
         this.credentials.set(provider, apiKey);
         this.logAccess(provider, "store");
@@ -1421,6 +1578,48 @@ class CredentialManager {
     hasApiKey(provider) {
         return (this.credentials.has(provider) || !!this.getFromEnvironment(provider));
     }
+    /**
+     * Get expected secret name for provider
+     * @param provider The provider name
+     * @returns Expected GitHub secret name
+     */
+    getExpectedSecretName(provider) {
+        const secretNames = {
+            anthropic: 'ANTHROPIC_API_KEY',
+            openrouter: 'OPENROUTER_API_KEY',
+            openai: 'OPENAI_API_KEY'
+        };
+        return secretNames[provider.toLowerCase()] ||
+            `${provider.toUpperCase()}_API_KEY`;
+    }
+    /**
+     * Get provider URL for getting API keys
+     * @param provider The provider name
+     * @returns URL where users can get API keys
+     */
+    getProviderUrl(provider) {
+        const urls = {
+            anthropic: 'https://console.anthropic.com/settings/keys',
+            openrouter: 'https://openrouter.ai/settings/keys',
+            openai: 'https://platform.openai.com/api-keys'
+        };
+        return urls[provider.toLowerCase()] ||
+            `https://${provider.toLowerCase()}.com`;
+    }
+    /**
+     * Get expected API key format for provider
+     * @param provider The provider name
+     * @returns Expected format description
+     */
+    getExpectedFormat(provider) {
+        const formats = {
+            anthropic: 'sk-ant-... (starts with sk-ant-)',
+            openrouter: 'sk-or-... (starts with sk-or-)',
+            openai: 'sk-... (starts with sk-)'
+        };
+        return formats[provider.toLowerCase()] ||
+            'Valid API key format';
+    }
 }
 exports.CredentialManager = CredentialManager;
 //# sourceMappingURL=credential-manager.js.map
@@ -1471,11 +1670,92 @@ const core = __importStar(__nccwpck_require__(2186));
 const ai_api_1 = __nccwpck_require__(1884);
 const review_1 = __nccwpck_require__(7650);
 const token_counter_1 = __nccwpck_require__(1690);
+// Helper function to categorize and prioritize existing comments
+const categorizeAndPrioritizeComments = (comments) => {
+    const categories = {
+        security: [],
+        performance: [],
+        architecture: [],
+        codeQuality: [],
+        other: [],
+    };
+    const alreadyCovered = [];
+    // Keywords for categorization
+    const categoryKeywords = {
+        security: [
+            "security",
+            "vulnerability",
+            "injection",
+            "authentication",
+            "authorization",
+            "sanitize",
+            "validate",
+        ],
+        performance: [
+            "performance",
+            "bottleneck",
+            "optimization",
+            "memory",
+            "cache",
+            "token limit",
+            "efficiency",
+        ],
+        architecture: [
+            "architecture",
+            "design pattern",
+            "coupling",
+            "cohesion",
+            "separation",
+            "interface",
+            "abstraction",
+        ],
+        codeQuality: [
+            "code quality",
+            "maintainability",
+            "readability",
+            "naming",
+            "complexity",
+            "duplication",
+        ],
+    };
+    // Implementation-specific patterns that indicate something is already covered
+    const implementationPatterns = [
+        /already implemented/i,
+        /already exists/i,
+        /truncation.*already/i,
+        /validation.*already/i,
+        /error handling.*already/i,
+        /optimization.*already/i,
+    ];
+    comments.forEach((comment) => {
+        const lowerComment = comment.toLowerCase();
+        // Check if comment mentions something already implemented
+        if (implementationPatterns.some((pattern) => pattern.test(comment))) {
+            alreadyCovered.push(comment);
+            return;
+        }
+        // Categorize by keywords
+        let categorized = false;
+        for (const [category, keywords] of Object.entries(categoryKeywords)) {
+            if (keywords.some((keyword) => lowerComment.includes(keyword))) {
+                categories[category].push(comment);
+                categorized = true;
+                break;
+            }
+        }
+        if (!categorized) {
+            categories.other.push(comment);
+        }
+    });
+    // Get most recent 5 comments for general context
+    const recent = comments.slice(-5);
+    return { recent, categories, alreadyCovered };
+};
 /**
  * Service for handling Bad Buggy-powered code review operations
  */
 // Build review prompt with repository context and contextual content
-const buildReviewPrompt = (config, chunkContent, repositoryContext) => {
+const buildReviewPrompt = (config, chunkContent, repositoryContext, prContext) => {
     const basePrompt = config.review_prompt.replace("{{DATE}}", new Date().toISOString().split("T")[0]);
     // Add custom prompt if provided
     const fullPrompt = config.custom_prompt
@@ -1518,7 +1798,89 @@ const buildReviewPrompt = (config, chunkContent, repositoryContext) => {
             contextSection += "\n";
         }
     }
-    return `${fullPrompt}${contextSection}
+    // Add PR context if available
+    if (prContext) {
+        contextSection += "\n## Pull Request Context\n\n";
+        contextSection += `**Title:** ${prContext.title}\n`;
+        contextSection += `**Author:** ${prContext.author}\n`;
+        if (prContext.description && prContext.description.trim()) {
+            contextSection += `**Description:** ${prContext.description}\n`;
+        }
+        // Add categorized existing comments to provide better context and avoid repetition
+        if (prContext.existingComments.length > 0) {
+            const categorizedComments = categorizeAndPrioritizeComments(prContext.existingComments);
+            contextSection += `\n## Previous Review Context\n\n`;
+            // Show what's already been covered/implemented
+            if (categorizedComments.alreadyCovered.length > 0) {
+                contextSection += `**✅ Already Addressed:** These concerns have been noted as already implemented:\n`;
+                categorizedComments.alreadyCovered
+                    .slice(0, 2)
+                    .forEach((comment, index) => {
+                    const preview = comment.length > 150
+                        ? comment.substring(0, 150) + "..."
+                        : comment;
+                    contextSection += `${index + 1}. ${preview}\n`;
+                });
+                contextSection += `\n`;
+            }
+            // Show categorized feedback to avoid repetition
+            const nonEmptyCategories = Object.entries(categorizedComments.categories).filter(([, comments]) => comments.length > 0);
+            if (nonEmptyCategories.length > 0) {
+                contextSection += `**Previous Feedback Categories:** (DO NOT repeat similar comments)\n`;
+                nonEmptyCategories.slice(0, 3).forEach(([category, comments]) => {
+                    if (comments.length > 0) {
+                        const preview = comments[0].length > 120
+                            ? comments[0].substring(0, 120) + "..."
+                            : comments[0];
+                        contextSection += `- **${category.charAt(0).toUpperCase() + category.slice(1)}**: ${preview}\n`;
+                    }
+                });
+                contextSection += `\n`;
+            }
+            // Show most recent comments for general context
+            contextSection += `**Recent Comments:** (${categorizedComments.recent.length} most recent):\n`;
+            categorizedComments.recent.slice(0, 3).forEach((comment, index) => {
+                const preview = comment.length > 150 ? comment.substring(0, 150) + "..." : comment;
+                contextSection += `${index + 1}. ${preview}\n`;
+            });
+            if (prContext.existingComments.length > 5) {
+                contextSection += `... and ${prContext.existingComments.length - 5} more previous comments\n`;
+            }
+        }
+        contextSection += "\n";
+    }
+    // Add architectural context to prevent misunderstandings
+    const architecturalContext = `
+
+## Codebase Architecture Context
+This is a TypeScript GitHub Action following specific architectural patterns:
+
+**Type System Guidelines:**
+- Domain types (shared across modules) belong in src/types.ts
+- Service-specific types (internal parsing, API responses) stay in their service files
+- Interface vs Type: Use 'type' for all definitions (@typescript-eslint/consistent-type-definitions rule)
+
+**Architectural Patterns:**
+- Functional core, imperative shell architecture
+- Domain-driven design with clear separation of concerns
+- Effects layer for side effects (API calls, file system)
+- Services layer for orchestration
+- Domains layer for pure business logic
+
+**Before Suggesting Improvements:**
+1. ✅ VERIFY if functionality already exists in the current code
+2. ✅ CHECK if error handling, validation, optimizations are already implemented  
+3. ✅ UNDERSTAND the difference between domain types (shared) vs implementation types (local)
+4. ✅ CONSIDER if the code follows established patterns in this codebase
+5. ✅ LOOK at the full context, not just the diff lines
+
+**Common Patterns to Recognize:**
+- Truncation logic for long content (already implemented in multiple places)
+- Type definitions scoped appropriately (domain vs service-specific)
+- Error handling patterns using custom error types
+- Validation patterns using configuration
+`;
+    return `${fullPrompt}${contextSection}${architecturalContext}
 
 Please review the following code changes and provide maximum your top 1-5 most impactful insights as a JSON array.
 
@@ -1538,23 +1900,39 @@ Each comment can be either:
    - file: the filename
    - comment: your insight (omit line/start_line for file-level comments)
 
-Examples of senior engineer feedback with markdown formatting:
+## ⚠️  CRITICAL VERIFICATION REQUIREMENTS
 
+**BEFORE suggesting ANY improvement, ASK YOURSELF:**
+- "Is this functionality already implemented in the visible code?"
+- "Does this suggestion contradict existing architectural patterns?"
+- "Am I seeing the full context or just focusing on diff lines?"
+
+## Required JSON Response Format Examples:
+
+**1. File-level comment** (general feedback about entire file):
 [
   {
-    "file": "src/auth.js",
-    "line": 45,
-    "comment": "**Security vulnerability: SQL injection risk**\n\nYour current approach uses direct string concatenation with user input, which creates a serious security vulnerability that could lead to database compromise.\n\n**Solution**: Use parameterized queries:\n\n\`\`\`sql\n-- Instead of:\nSELECT * FROM users WHERE id = '" + userId + "'\n\n-- Use:\nSELECT * FROM users WHERE id = ?\n\`\`\`\n\nThis follows OWASP guidelines and is a critical security practice that prevents attackers from injecting malicious SQL code."
-  },
+    "file": "src/auth.ts",
+    "comment": "**🟢 EXCELLENT: Comprehensive security implementation**\\n\\nThis authentication service demonstrates strong security practices with proper input validation, secure token handling, and comprehensive error boundaries. The use of bcrypt for password hashing and JWT for session management follows industry standards perfectly."
+  }
+]
+
+**2. Single-line comment** (specific to one line):
+[
   {
-    "file": "src/payment.js", 
-    "start_line": 78,
-    "line": 85,
-    "comment": "**Great use of the Strategy pattern!**\n\nYour implementation is clean and follows good design principles. One enhancement to consider:\n\n**Add transaction locking** to prevent race conditions during concurrent payment processing:\n\n\`\`\`javascript\nconst lock = await acquirePaymentLock(userId);\ntry {\n  // Your payment processing logic\n} finally {\n  await releaseLock(lock);\n}\n\`\`\`\n\nThis would make the system more robust under high load and prevent double-charging scenarios."
-  },
+    "file": "src/database.ts",
+    "line": 127,
+    "comment": "**🔴 CRITICAL: SQL injection vulnerability**\\n\\nDirect string interpolation creates a serious security risk. Replace with parameterized query:\\n\\n\`const query = 'SELECT * FROM users WHERE email = $1';\`\\n\`const result = await db.query(query, [email]);\`\\n\\nThis prevents malicious SQL injection attacks that could compromise your entire database."
+  }
+]
+
+**3. Multi-line comment** (spans multiple lines):
+[
   {
-    "file": "src/config.ts",
-    "comment": "**Excellent configuration architecture!**\n\nThis file demonstrates good separation of concerns with environment-based configuration. Consider adding:\n\n1. **Configuration validation** using a schema library like Joi or Yup\n2. **Type safety** with strict TypeScript interfaces\n3. **Default fallbacks** for optional configuration values\n\nThis would make the configuration more robust and easier to maintain as the application grows."
+    "file": "src/validation.ts",
+    "start_line": 45,
+    "line": 62,
+    "comment": "**🟡 IMPORTANT: Consider extracting validation schema**\\n\\nThis validation logic is well-implemented but could benefit from better maintainability. Consider using a schema validation library like Joi or Yup:\\n\\n\`const schema = Joi.object({ name: Joi.string().required(), email: Joi.string().email() });\`\\n\\nThis approach provides better error messages, is more declarative, and easier to test and maintain as requirements evolve."
   }
 ]
 
@@ -1566,20 +1944,27 @@ Respond with ONLY a JSON array, no other text. Do not include explanations, thin
 exports.buildReviewPrompt = buildReviewPrompt;
 // Helper function to validate comment structure
 const isValidComment = (comment) => {
-    if (typeof comment !== 'object' || comment === null) {
+    if (typeof comment !== "object" || comment === null) {
         return false;
     }
     const obj = comment;
-    return typeof obj.file === 'string' &&
-        (obj.line === undefined || typeof obj.line === 'number') &&
-        typeof obj.comment === 'string';
+    return (typeof obj.file === "string" &&
+        (obj.line === undefined || typeof obj.line === "number") &&
+        typeof obj.comment === "string");
 };
 // Pure function to parse AI response into ReviewComments
 const parseAIResponse = (responseContent) => {
     let comments = [];
+    // First, clean up the response by removing common markdown formatting
+    let cleanedResponse = responseContent.trim();
+    // Remove markdown code blocks if present
+    cleanedResponse = cleanedResponse.replace(/^```json\s*\n?/i, "");
+    cleanedResponse = cleanedResponse.replace(/\n?```\s*$/i, "");
+    cleanedResponse = cleanedResponse.replace(/^```\s*\n?/i, "");
+    cleanedResponse = cleanedResponse.trim();
     try {
-        // Try to parse the full response first
-        const parsedResponse = JSON.parse(responseContent);
+        // Try to parse the cleaned response first
+        const parsedResponse = JSON.parse(cleanedResponse);
         comments = parsedResponse
             .filter((comment) => {
             if (!isValidComment(comment)) {
@@ -1592,7 +1977,9 @@ const parseAIResponse = (responseContent) => {
             const reviewComment = {
                 path: comment.file,
                 body: comment.comment,
-                commentType: comment.line !== undefined || comment.start_line !== undefined ? 'diff' : 'file',
+                commentType: comment.line !== undefined || comment.start_line !== undefined
+                    ? "diff"
+                    : "file",
             };
             if (comment.line !== undefined) {
                 reviewComment.line = comment.line;
@@ -1604,13 +1991,13 @@ const parseAIResponse = (responseContent) => {
         });
     }
     catch (e) {
-        // If that fails, try to extract JSON from the response
+        // If that fails, try to extract JSON from the cleaned response
         try {
             // More robust JSON extraction - find the first [ and last ]
-            const startIndex = responseContent.indexOf('[');
-            const lastIndex = responseContent.lastIndexOf(']');
+            const startIndex = cleanedResponse.indexOf("[");
+            const lastIndex = cleanedResponse.lastIndexOf("]");
             if (startIndex !== -1 && lastIndex !== -1 && lastIndex > startIndex) {
-                const jsonString = responseContent.substring(startIndex, lastIndex + 1);
+                const jsonString = cleanedResponse.substring(startIndex, lastIndex + 1);
                 const parsedResponse = JSON.parse(jsonString);
                 comments = parsedResponse
                     .filter((comment) => {
@@ -1624,7 +2011,9 @@ const parseAIResponse = (responseContent) => {
                     const reviewComment = {
                         path: comment.file,
                         body: comment.comment,
-                        commentType: comment.line !== undefined || comment.start_line !== undefined ? 'diff' : 'file',
+                        commentType: comment.line !== undefined || comment.start_line !== undefined
+                            ? "diff"
+                            : "file",
                     };
                     if (comment.line !== undefined) {
                         reviewComment.line = comment.line;
@@ -1636,24 +2025,77 @@ const parseAIResponse = (responseContent) => {
                 });
             }
             else {
-                core.warning("Failed to parse AI response as JSON - no JSON array found");
+                core.warning("Failed to parse AI response as JSON - no JSON array found. The AI may have included text outside the JSON format.");
                 core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
+                core.info("💡 Tip: Check if the AI model is following the JSON format instructions in the prompt.");
                 comments = [];
             }
         }
         catch (e2) {
-            core.warning("Failed to parse AI response as JSON");
-            core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
-            comments = [];
+            // Final fallback: try to find individual JSON objects
+            try {
+                const jsonMatches = cleanedResponse.match(/\{[^{}]*"file"[^{}]*\}/g);
+                if (jsonMatches && jsonMatches.length > 0) {
+                    const parsedComments = jsonMatches
+                        .map((match) => {
+                        try {
+                            return JSON.parse(match);
+                        }
+                        catch {
+                            return null;
+                        }
+                    })
+                        .filter((comment) => comment && isValidComment(comment))
+                        .map((comment) => {
+                        const reviewComment = {
+                            path: comment.file,
+                            body: comment.comment,
+                            commentType: comment.line !== undefined ||
+                                comment.start_line !== undefined
+                                ? "diff"
+                                : "file",
+                        };
+                        if (comment.line !== undefined) {
+                            reviewComment.line = comment.line;
+                        }
+                        if (comment.start_line !== undefined) {
+                            reviewComment.start_line = comment.start_line;
+                        }
+                        return reviewComment;
+                    });
+                    if (parsedComments.length > 0) {
+                        core.info(`💡 Successfully recovered ${parsedComments.length} comments using fallback parsing.`);
+                        comments = parsedComments;
+                    }
+                    else {
+                        core.warning("Failed to parse AI response as JSON - the response may contain invalid JSON syntax.");
+                        core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
+                        core.info("💡 Tip: This could indicate the AI model isn't compatible with structured JSON responses. Consider using a different model.");
+                        comments = [];
+                    }
+                }
+                else {
+                    core.warning("Failed to parse AI response as JSON - the response may contain invalid JSON syntax.");
+                    core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
+                    core.info("💡 Tip: This could indicate the AI model isn't compatible with structured JSON responses. Consider using a different model.");
+                    comments = [];
+                }
+            }
+            catch (e3) {
+                core.warning("Failed to parse AI response as JSON - the response may contain invalid JSON syntax.");
+                core.warning(`Response was: ${responseContent.substring(0, 500)}...`);
+                core.info("💡 Tip: This could indicate the AI model isn't compatible with structured JSON responses. Consider using a different model.");
+                comments = [];
+            }
         }
     }
     return comments;
 };
 exports.parseAIResponse = parseAIResponse;
 // Effect: Review a single chunk with repository context using secure credential management
-const reviewChunk = async (chunk, config, provider, model) => {
+const reviewChunk = async (chunk, config, provider, model, prContext) => {
     // Always use repository context if available (simplified approach)
-    const prompt = (0, exports.buildReviewPrompt)(config, chunk.content, chunk.repositoryContext);
+    const prompt = (0, exports.buildReviewPrompt)(config, chunk.content, chunk.repositoryContext, prContext);
     core.info(`🔗 Calling AI provider: ${provider} with model: ${model}`);
     core.info(`📝 Prompt length: ${prompt.length} characters`);
     if (chunk.repositoryContext) {
@@ -1869,8 +2311,12 @@ class Logger {
         core.info('💰 Calculating review costs...');
     }
     static costSummary(totalCost, inputCost, outputCost) {
+        const reviewsPerDollar = totalCost > 0 ? Math.floor(1 / totalCost) : 0;
+        const monthlyEstimate = (totalCost * 30).toFixed(4); // Estimate for 30 reviews/month
         const costMessage = `💰 AI Review Cost: ${(0, cost_1.formatCost)(totalCost)} (${(0, cost_1.formatCost)(inputCost)} input + ${(0, cost_1.formatCost)(outputCost)} output)`;
         core.info(costMessage);
+        core.info(`📈 Cost efficiency: ~${reviewsPerDollar} reviews per dollar`);
+        core.info(`📅 Monthly estimate: ~$${monthlyEstimate} for 30 reviews`);
     }
     static costBreakdown(tokens, inputCost, outputCost, totalCost) {
         core.info('📊 Token breakdown:');
@@ -2295,7 +2741,14 @@ class ReviewWorkflow {
         const hasRequiredPermission = REQUIRED_PERMISSIONS.includes(userPermission);
         const isRepoOwner = triggeringUser.login === repoOwner;
         if (!hasRequiredPermission && !isRepoOwner) {
-            throw new Error(`User does not have sufficient permissions to trigger AI reviews. Required: ${REQUIRED_PERMISSIONS.join(' or ')}, Current: ${userPermission}`);
+            throw new Error(`❌ Insufficient permissions to trigger AI reviews\n\n` +
+                `User: ${triggeringUser.login}\n` +
+                `Current permission: ${userPermission}\n` +
+                `Required: ${REQUIRED_PERMISSIONS.join(' or ')}\n\n` +
+                `🔧 Fix: Ask a repository admin to:\n` +
+                `1. Grant you write access to this repository, OR\n` +
+                `2. Add you to the allowed_users list in .github/ai-review-config.yml\n\n` +
+                `💡 Repository owners can always trigger reviews regardless of permissions`);
         }
         // Double-check permissions haven't changed during execution
         const revalidatedPermission = await (0, github_api_1.checkUserPermissions)(this.octokit, repoOwner, this.context.repo.repo, triggeringUser.login);
@@ -2348,13 +2801,28 @@ class ReviewWorkflow {
             };
         }
         logger_1.Logger.reviewStart();
+        // Gather PR context for improved reviews
+        const existingComments = await (0, github_api_1.getExistingReviewComments)(this.octokit, this.context, pr);
+        const prContext = {
+            title: pr.title || 'No title',
+            description: pr.body || '',
+            author: pr.user?.login || 'unknown',
+            existingComments
+        };
+        core.info(`📝 PR Context: "${prContext.title}" by ${prContext.author}`);
+        if (prContext.description) {
+            core.info(`📖 PR Description: ${prContext.description.substring(0, 100)}${prContext.description.length > 100 ? '...' : ''}`);
+        }
+        if (existingComments.length > 0) {
+            core.info(`💬 Found ${existingComments.length} existing review comments to avoid repetition`);
+        }
         // Process chunks in parallel for better performance
         const chunkPromises = chunks.map(async (chunk, index) => {
             const chunkNumber = index + 1;
             logger_1.Logger.chunkReview(chunkNumber, chunks.length, chunk.content.length, chunk.fileChanges.map(f => f.filename));
             logger_1.Logger.aiProviderCall(chunkNumber, this.inputs.aiProvider, this.inputs.model);
             const startTime = Date.now();
-            const { comments, tokens } = await (0, ai_review_1.reviewChunk)(chunk, this.config, this.inputs.aiProvider, this.inputs.model);
+            const { comments, tokens } = await (0, ai_review_1.reviewChunk)(chunk, this.config, this.inputs.aiProvider, this.inputs.model, prContext);
             const duration = Date.now() - startTime;
             logger_1.Logger.chunkResults(chunkNumber, comments.length, tokens.input, tokens.output, duration);
             logger_1.Logger.chunkIssues(chunkNumber, comments);

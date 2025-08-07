@@ -102,7 +102,14 @@ class ReviewWorkflow {
         const hasRequiredPermission = REQUIRED_PERMISSIONS.includes(userPermission);
         const isRepoOwner = triggeringUser.login === repoOwner;
         if (!hasRequiredPermission && !isRepoOwner) {
-            throw new Error(`User does not have sufficient permissions to trigger AI reviews. Required: ${REQUIRED_PERMISSIONS.join(' or ')}, Current: ${userPermission}`);
+            throw new Error(`❌ Insufficient permissions to trigger AI reviews\n\n` +
+                `User: ${triggeringUser.login}\n` +
+                `Current permission: ${userPermission}\n` +
+                `Required: ${REQUIRED_PERMISSIONS.join(' or ')}\n\n` +
+                `🔧 Fix: Ask a repository admin to:\n` +
+                `1. Grant you write access to this repository, OR\n` +
+                `2. Add you to the allowed_users list in .github/ai-review-config.yml\n\n` +
+                `💡 Repository owners can always trigger reviews regardless of permissions`);
         }
         // Double-check permissions haven't changed during execution
         const revalidatedPermission = await (0, github_api_1.checkUserPermissions)(this.octokit, repoOwner, this.context.repo.repo, triggeringUser.login);
@@ -155,13 +162,28 @@ class ReviewWorkflow {
             };
         }
         logger_1.Logger.reviewStart();
+        // Gather PR context for improved reviews
+        const existingComments = await (0, github_api_1.getExistingReviewComments)(this.octokit, this.context, pr);
+        const prContext = {
+            title: pr.title || 'No title',
+            description: pr.body || '',
+            author: pr.user?.login || 'unknown',
+            existingComments
+        };
+        core.info(`📝 PR Context: "${prContext.title}" by ${prContext.author}`);
+        if (prContext.description) {
+            core.info(`📖 PR Description: ${prContext.description.substring(0, 100)}${prContext.description.length > 100 ? '...' : ''}`);
+        }
+        if (existingComments.length > 0) {
+            core.info(`💬 Found ${existingComments.length} existing review comments to avoid repetition`);
+        }
         // Process chunks in parallel for better performance
         const chunkPromises = chunks.map(async (chunk, index) => {
             const chunkNumber = index + 1;
             logger_1.Logger.chunkReview(chunkNumber, chunks.length, chunk.content.length, chunk.fileChanges.map(f => f.filename));
             logger_1.Logger.aiProviderCall(chunkNumber, this.inputs.aiProvider, this.inputs.model);
             const startTime = Date.now();
-            const { comments, tokens } = await (0, ai_review_1.reviewChunk)(chunk, this.config, this.inputs.aiProvider, this.inputs.model);
+            const { comments, tokens } = await (0, ai_review_1.reviewChunk)(chunk, this.config, this.inputs.aiProvider, this.inputs.model, prContext);
             const duration = Date.now() - startTime;
             logger_1.Logger.chunkResults(chunkNumber, comments.length, tokens.input, tokens.output, duration);
             logger_1.Logger.chunkIssues(chunkNumber, comments);

@@ -2,13 +2,13 @@ import { AIProviderError } from '../types';
 import { CredentialManager } from '../security/credential-manager';
 
 // Token counting interfaces
-export interface TokenCountResult {
+export type TokenCountResult = {
   tokens: number;
   provider: string;
   model: string;
 }
 
-export interface TokenCounter {
+export type TokenCounter = {
   countTokens(text: string, model: string): Promise<TokenCountResult>;
 }
 

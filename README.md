@@ -38,7 +38,7 @@ jobs:
           fetch-depth: 0
 
       - name: Bad Buggy Code Review
-        uses: gundurraga/bad-buggy@v1
+        uses: gundurraga/bad-buggy@v1 # ⚠️ See security recommendations below
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           ai-provider: "openrouter" # or "anthropic"
@@ -160,7 +160,8 @@ The more context you provide, the more targeted and valuable the reviews become.
 ### **💡 Model suggestions:**
 
 Choose based on your needs - Bad Buggy works great with any model:
-- **Latest models**: `claude-sonnet-4-20250514`, `gpt-4o`, `gemini-pro`  
+
+- **Latest models**: `claude-sonnet-4-20250514`, `gpt-4o`, `gemini-pro`
 - **Budget-friendly**: `claude-3-5-haiku`, `gpt-4o-mini`
 - **Specialized**: Browse 400+ models on OpenRouter
 
@@ -176,21 +177,62 @@ Bad Buggy automatically fetches current pricing from providers, so you always se
 - ✅ Verify the workflow runs without errors in Actions tab
 - ✅ Make sure your PR has actual code changes (not just README updates)
 
-**Permission errors?**
+**Permission errors (`Resource not accessible by integration`)?**
 
-- ✅ The workflow file includes proper `permissions:` section (see setup above)
-- ✅ Repository Settings → Actions → General → "Read and write permissions"
+This is the most common issue, especially in private repositories. Here's how to fix it:
+
+1. **Go to your repository's Settings → Actions → General**
+2. **Scroll down to "Workflow permissions"**
+3. **Select "Read and write permissions"**
+4. **Check "Allow GitHub Actions to create and approve pull requests"**
+5. **Click Save**
+
+This allows Bad Buggy to post review comments on your pull requests.
 
 **Want more help?** [Open an issue](https://github.com/gundurraga/bad-buggy/issues) - we respond quickly!
 
 ---
 
-## 🔒 Privacy & Security
+## 🔒 Security & Best Practices
+
+### 🛡️ **Production Security Recommendations**
+
+For production use, consider these security best practices:
+
+#### **1. Pin to specific commit SHA (Recommended)**
+```yaml
+# ✅ Most secure - pin to specific commit
+- uses: gundurraga/bad-buggy@abc1234567890abcdef1234567890abcdef123456
+
+# ⚠️ Convenient but less secure - version tags can change
+- uses: gundurraga/bad-buggy@v1
+```
+
+**Why?** Pinning to a commit SHA ensures the exact code version never changes, protecting against supply chain attacks.
+
+**How to get the SHA:** 
+- Go to [releases page](https://github.com/gundurraga/bad-buggy/releases)
+- Click on the commit SHA for your chosen version
+- Use the full 40-character SHA in your workflow
+
+#### **2. Fork the repository (Extra security)**
+```yaml
+# ✅ Ultimate security - use your own fork
+- uses: your-username/bad-buggy@your-chosen-commit-sha
+```
+
+**Benefits:**
+- Complete control over the code that runs in your workflows
+- Review all changes before updating
+- No dependency on external repository availability
+
+### 🔐 **Privacy & Data Handling**
 
 - Your code is sent to your chosen AI provider for review
 - No data is stored by Bad Buggy itself
 - All API keys are handled securely through GitHub Secrets
 - Full audit trail in GitHub Actions logs
+- Review process is stateless - no persistent data storage
 
 ## ⭐ Star us!
 

@@ -113,9 +113,15 @@ Remember: Transform each review into a mentoring session that builds both immedi
 ✓ []
 ✓ [{"file":"app.js","comment":"Good implementation overall"}]
 
+🚨 CRITICAL LINE VALIDATION RULES:
+- ONLY comment on lines that appear in the diff (marked with + or context lines)
+- NEVER comment on deleted lines (marked with -)
+- NEVER reference line numbers that don't exist in the NEW file version
+- If unsure about line numbers, use file-level comments (no "line" property)
+
 Required JSON properties:
 - "file": exact file path from diff (required)
-- "line": line number (optional)  
+- "line": line number from NEW file version (optional - omit if uncertain)  
 - "comment": your review feedback (required)
 
 ⚠️ FINAL WARNING: Your response must start with '[' as the very first character and end with ']' as the very last character. Nothing else.`,
@@ -135,7 +141,7 @@ Required JSON properties:
 const mergeConfig = (defaultConfig, userConfig) => {
     return {
         ...defaultConfig,
-        ...userConfig
+        ...userConfig,
     };
 };
 exports.mergeConfig = mergeConfig;
@@ -144,30 +150,32 @@ const validateConfig = (config) => {
     const errors = [];
     const warnings = [];
     // Validate review_prompt
-    if (!config.review_prompt || typeof config.review_prompt !== 'string' || config.review_prompt.trim() === '') {
-        errors.push('review_prompt must be a non-empty string');
+    if (!config.review_prompt ||
+        typeof config.review_prompt !== "string" ||
+        config.review_prompt.trim() === "") {
+        errors.push("review_prompt must be a non-empty string");
     }
     else if (config.review_prompt.length > 10000) {
-        warnings.push('review_prompt is very long and may cause API issues');
+        warnings.push("review_prompt is very long and may cause API issues");
     }
     // Validate max_comments
-    if (typeof config.max_comments !== 'number' || config.max_comments <= 0) {
-        errors.push('max_comments must be a positive number');
+    if (typeof config.max_comments !== "number" || config.max_comments <= 0) {
+        errors.push("max_comments must be a positive number");
     }
     else if (config.max_comments > 20) {
-        warnings.push('max_comments is high and may cause API rate limits');
+        warnings.push("max_comments is high and may cause API rate limits");
     }
     // Validate arrays
     if (!Array.isArray(config.ignore_patterns)) {
-        errors.push('ignore_patterns must be an array');
+        errors.push("ignore_patterns must be an array");
     }
     if (!Array.isArray(config.allowed_users)) {
-        errors.push('allowed_users must be an array');
+        errors.push("allowed_users must be an array");
     }
     return {
         isValid: errors.length === 0,
         errors,
-        warnings
+        warnings,
     };
 };
 exports.validateConfig = validateConfig;
@@ -175,36 +183,40 @@ exports.validateConfig = validateConfig;
 const validateInputs = (inputs) => {
     const errors = [];
     // Validate GitHub token
-    if (!inputs.githubToken || typeof inputs.githubToken !== 'string') {
-        errors.push('GitHub token is required');
+    if (!inputs.githubToken || typeof inputs.githubToken !== "string") {
+        errors.push("GitHub token is required");
     }
-    else if (!inputs.githubToken.startsWith('ghp_') && !inputs.githubToken.startsWith('ghs_') && !inputs.githubToken.startsWith('github_pat_')) {
-        errors.push('GitHub token format appears invalid');
+    else if (!inputs.githubToken.startsWith("ghp_") &&
+        !inputs.githubToken.startsWith("ghs_") &&
+        !inputs.githubToken.startsWith("github_pat_")) {
+        errors.push("GitHub token format appears invalid");
     }
     // Validate AI provider
-    if (!['anthropic', 'openrouter'].includes(inputs.aiProvider)) {
+    if (!["anthropic", "openrouter"].includes(inputs.aiProvider)) {
         errors.push('AI provider must be either "anthropic" or "openrouter"');
     }
     // Validate API key
-    if (!inputs.apiKey || typeof inputs.apiKey !== 'string') {
-        errors.push('API key is required');
+    if (!inputs.apiKey || typeof inputs.apiKey !== "string") {
+        errors.push("API key is required");
     }
     else {
         // Basic format validation based on provider
-        if (inputs.aiProvider === 'anthropic' && !inputs.apiKey.startsWith('sk-ant-')) {
-            errors.push('Anthropic API key format appears invalid (should start with sk-ant-)');
+        if (inputs.aiProvider === "anthropic" &&
+            !inputs.apiKey.startsWith("sk-ant-")) {
+            errors.push("Anthropic API key format appears invalid (should start with sk-ant-)");
         }
-        else if (inputs.aiProvider === 'openrouter' && !inputs.apiKey.startsWith('sk-or-')) {
-            errors.push('OpenRouter API key format appears invalid (should start with sk-or-)');
+        else if (inputs.aiProvider === "openrouter" &&
+            !inputs.apiKey.startsWith("sk-or-")) {
+            errors.push("OpenRouter API key format appears invalid (should start with sk-or-)");
         }
     }
     // Validate model
-    if (!inputs.model || typeof inputs.model !== 'string') {
-        errors.push('Model is required');
+    if (!inputs.model || typeof inputs.model !== "string") {
+        errors.push("Model is required");
     }
     return {
         isValid: errors.length === 0,
-        errors
+        errors,
     };
 };
 exports.validateInputs = validateInputs;
@@ -212,10 +224,10 @@ exports.validateInputs = validateInputs;
 const validateAndThrow = (validation, errorType) => {
     // Log warnings if any
     if (validation.warnings) {
-        validation.warnings.forEach(warning => core.warning(warning));
+        validation.warnings.forEach((warning) => core.warning(warning));
     }
     if (!validation.isValid) {
-        throw new types_1.ConfigValidationError(`${errorType}: ${validation.errors.join(', ')}`);
+        throw new types_1.ConfigValidationError(`${errorType}: ${validation.errors.join(", ")}`);
     }
 };
 exports.validateAndThrow = validateAndThrow;
@@ -226,6 +238,57 @@ const loadConfig = async (configFile) => {
 };
 exports.loadConfig = loadConfig;
 //# sourceMappingURL=config.js.map
+
+/***/ }),
+
+/***/ 1912:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+// Application constants - centralized magic numbers for better maintainability
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.PROVIDER_URLS = exports.PROVIDER_FORMATS = exports.ERROR_MESSAGES = exports.REVIEW_CONSTANTS = void 0;
+exports.REVIEW_CONSTANTS = {
+    // Chunking and content limits
+    MAX_CHUNK_SIZE: 60000,
+    CONTEXT_LINES: 100,
+    SMALL_FILE_THRESHOLD: 200,
+    FUNCTION_SEARCH_RANGE: 50,
+    // Token estimation
+    DEFAULT_CHARS_PER_TOKEN: 3.5,
+    CLAUDE_CHARS_PER_TOKEN: 3.8,
+    GPT4_CHARS_PER_TOKEN: 3.2,
+    // API limits
+    MAX_TOKENS: 128000, // Modern models have 128k+ context windows
+    MAX_FILES_PER_REQUEST: 100,
+    // Retry configuration
+    MAX_RETRIES: 2,
+    RETRY_DELAY_MS: 1000,
+    // Security audit
+    MAX_ACCESS_LOG_ENTRIES: 100,
+    // File processing
+    MAX_DISPLAY_FILES: 10,
+    MIN_API_KEY_LENGTH: 20,
+};
+exports.ERROR_MESSAGES = {
+    NO_API_KEY: "API key not found for provider",
+    INVALID_API_KEY_FORMAT: "Invalid API key format for provider",
+    PERMISSION_CHECK_FAILED: "Permission check failed - cannot verify authorization",
+    SECURITY_CHECK_ERROR: "Security check error",
+    USERS_READ_ONLY: "Users cannot be modified through GitHub API",
+    USERS_CANNOT_DELETE: "Users cannot be deleted through GitHub API",
+    UNSUPPORTED_PROVIDER: "Unsupported AI provider",
+};
+exports.PROVIDER_FORMATS = {
+    anthropic: "sk-ant-... (starts with sk-ant-)",
+    openrouter: "sk-or-... (starts with sk-or-)",
+};
+exports.PROVIDER_URLS = {
+    anthropic: "https://console.anthropic.com/settings/keys",
+    openrouter: "https://openrouter.ai/settings/keys",
+};
+//# sourceMappingURL=constants.js.map
 
 /***/ }),
 
@@ -266,12 +329,13 @@ exports.formatCost = formatCost;
 /***/ }),
 
 /***/ 8790:
-/***/ ((__unused_webpack_module, exports) => {
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.createFileComment = exports.createReviewComment = exports.formatReviewBody = exports.extractPRInfo = void 0;
+const constants_1 = __nccwpck_require__(1912);
 // Pure function to extract PR info
 const extractPRInfo = (pr) => {
     return {
@@ -295,11 +359,13 @@ const formatReviewBody = (model, totalTokens, commentCount, prInfo, costInfo) =>
         summary += `**Files Changed:** ${prInfo.filesChanged.length} files\n`;
         summary += `**Changes:** +${prInfo.additions} -${prInfo.deletions}\n`;
         summary += `\n**Modified Files:**\n`;
-        prInfo.filesChanged.slice(0, 10).forEach((file) => {
+        prInfo.filesChanged
+            .slice(0, constants_1.REVIEW_CONSTANTS.MAX_DISPLAY_FILES)
+            .forEach((file) => {
             summary += `- \`${file}\`\n`;
         });
-        if (prInfo.filesChanged.length > 10) {
-            summary += `- ... and ${prInfo.filesChanged.length - 10} more files\n`;
+        if (prInfo.filesChanged.length > constants_1.REVIEW_CONSTANTS.MAX_DISPLAY_FILES) {
+            summary += `- ... and ${prInfo.filesChanged.length - constants_1.REVIEW_CONSTANTS.MAX_DISPLAY_FILES} more files\n`;
         }
         summary += `\n---\n\n`;
     }
@@ -307,15 +373,16 @@ const formatReviewBody = (model, totalTokens, commentCount, prInfo, costInfo) =>
     const modelInfo = `**Model:** ${model}`;
     const tokenInfo = `**Tokens:** ${totalTokens.input + totalTokens.output} (${totalTokens.input} input, ${totalTokens.output} output)`;
     // Add enhanced cost information if available
-    let costSection = '';
+    let costSection = "";
     if (costInfo) {
         const reviewsPerDollar = costInfo.totalCost > 0 ? Math.floor(1 / costInfo.totalCost) : 0;
         const costPerReview = costInfo.totalCost.toFixed(4);
         const monthlyBudget = (costInfo.totalCost * 100).toFixed(2); // Cost for 100 reviews
-        costSection = `**💰 Cost Analysis:**\n` +
-            `- This review: $${costPerReview}\n` +
-            `- Reviews per dollar: ~${reviewsPerDollar}\n` +
-            `- 100 reviews: ~$${monthlyBudget}\n\n`;
+        costSection =
+            `**💰 Cost Analysis:**\n` +
+                `- This review: $${costPerReview}\n` +
+                `- Reviews per dollar: ~${reviewsPerDollar}\n` +
+                `- 100 reviews: ~$${monthlyBudget}\n\n`;
     }
     const commentInfo = `**Comments:** ${commentCount}`;
     summary += `### 🔍 Review Details\n\n${modelInfo}\n${costSection}${tokenInfo}\n${commentInfo}\n\n---\n\n*This review was generated by Bad Buggy code reviewer.*`;
@@ -328,7 +395,7 @@ const createReviewComment = (path, line, body) => {
         path,
         line,
         body,
-        commentType: 'diff',
+        commentType: "diff",
     };
 };
 exports.createReviewComment = createReviewComment;
@@ -337,7 +404,7 @@ const createFileComment = (path, body) => {
     return {
         path,
         body,
-        commentType: 'file',
+        commentType: "file",
     };
 };
 exports.createFileComment = createFileComment;
@@ -353,18 +420,16 @@ exports.createFileComment = createFileComment;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.processComments = exports.processIncrementalDiff = exports.chunkDiff = exports.shouldIgnoreFile = exports.countTokens = void 0;
 const github_api_1 = __nccwpck_require__(568);
+const constants_1 = __nccwpck_require__(1912);
 // Pure function to count tokens
 const countTokens = (text, model) => {
-    let avgCharsPerToken = 3.5; // Default conservative estimate
+    let avgCharsPerToken = constants_1.REVIEW_CONSTANTS.DEFAULT_CHARS_PER_TOKEN;
     // Adjust based on model type (rough estimates)
     if (model.includes("claude")) {
-        avgCharsPerToken = 3.8; // Claude tends to have slightly longer tokens
+        avgCharsPerToken = constants_1.REVIEW_CONSTANTS.CLAUDE_CHARS_PER_TOKEN;
     }
     else if (model.includes("gpt-4")) {
-        avgCharsPerToken = 3.2; // GPT-4 is more efficient
-    }
-    else if (model.includes("gpt-3")) {
-        avgCharsPerToken = 3.0; // GPT-3 models
+        avgCharsPerToken = constants_1.REVIEW_CONSTANTS.GPT4_CHARS_PER_TOKEN;
     }
     return Math.ceil(text.length / avgCharsPerToken);
 };
@@ -383,7 +448,7 @@ exports.shouldIgnoreFile = shouldIgnoreFile;
 // Extract line numbers from diff patch
 const extractLineNumbers = (patch) => {
     const ranges = [];
-    const lines = patch.split('\n');
+    const lines = patch.split("\n");
     for (const line of lines) {
         const match = line.match(/^@@ -\d+,?\d* \+(\d+),?(\d*) @@/);
         if (match) {
@@ -396,23 +461,34 @@ const extractLineNumbers = (patch) => {
 };
 // Helper function to expand context to include complete function/class boundaries
 const expandToFunctionBoundaries = (lines, minLine, maxLine, filename) => {
-    const ext = filename.split('.').pop()?.toLowerCase() || '';
+    const ext = filename.split(".").pop()?.toLowerCase() || "";
     // Language-specific patterns for function/class boundaries
     const patterns = {
-        ts: [/^\s*(export\s+)?(async\s+)?function\s+\w+/, /^\s*(export\s+)?class\s+\w+/, /^\s*(export\s+)?interface\s+\w+/, /^\s*(export\s+)?type\s+\w+/],
-        js: [/^\s*(export\s+)?(async\s+)?function\s+\w+/, /^\s*(export\s+)?class\s+\w+/],
+        ts: [
+            /^\s*(export\s+)?(async\s+)?function\s+\w+/,
+            /^\s*(export\s+)?class\s+\w+/,
+            /^\s*(export\s+)?interface\s+\w+/,
+            /^\s*(export\s+)?type\s+\w+/,
+        ],
+        js: [
+            /^\s*(export\s+)?(async\s+)?function\s+\w+/,
+            /^\s*(export\s+)?class\s+\w+/,
+        ],
         py: [/^\s*(async\s+)?def\s+\w+/, /^\s*class\s+\w+/],
         go: [/^\s*func\s+(\w+\s+)?\w+/, /^\s*type\s+\w+/],
-        java: [/^\s*(public|private|protected)?\s*(static\s+)?[\w<>[\]]+\s+\w+\s*\(/, /^\s*(public|private|protected)?\s*(abstract\s+|final\s+)?(class|interface)\s+\w+/],
-        default: [/^\s*[\w\s]*function\s*\w*/, /^\s*[\w\s]*class\s*\w*/]
+        java: [
+            /^\s*(public|private|protected)?\s*(static\s+)?[\w<>[\]]+\s+\w+\s*\(/,
+            /^\s*(public|private|protected)?\s*(abstract\s+|final\s+)?(class|interface)\s+\w+/,
+        ],
+        default: [/^\s*[\w\s]*function\s*\w*/, /^\s*[\w\s]*class\s*\w*/],
     };
     const functionPatterns = patterns[ext] || patterns.default;
     let expandedStart = minLine;
     let expandedEnd = maxLine;
     // Look backwards for function start
-    for (let i = minLine - 1; i >= Math.max(0, minLine - 50); i--) {
+    for (let i = minLine - 1; i >= Math.max(0, minLine - constants_1.REVIEW_CONSTANTS.FUNCTION_SEARCH_RANGE); i--) {
         const line = lines[i];
-        if (functionPatterns.some(pattern => pattern.test(line))) {
+        if (functionPatterns.some((pattern) => pattern.test(line))) {
             expandedStart = i + 1;
             break;
         }
@@ -420,23 +496,27 @@ const expandToFunctionBoundaries = (lines, minLine, maxLine, filename) => {
     // Look forwards for function end (closing braces, dedentation)
     let braceCount = 0;
     let baseIndent = -1;
-    for (let i = expandedStart - 1; i < Math.min(lines.length, maxLine + 50); i++) {
+    for (let i = expandedStart - 1; i <
+        Math.min(lines.length, maxLine + constants_1.REVIEW_CONSTANTS.FUNCTION_SEARCH_RANGE); i++) {
         const line = lines[i];
         if (baseIndent === -1 && line.trim()) {
             baseIndent = line.search(/\S/);
         }
         // Count braces for languages that use them
-        if (['ts', 'js', 'java', 'go'].includes(ext)) {
+        if (["ts", "js", "java", "go"].includes(ext)) {
             braceCount += (line.match(/\{/g) || []).length;
             braceCount -= (line.match(/\}/g) || []).length;
-            if (braceCount === 0 && i > minLine && line.includes('}')) {
+            if (braceCount === 0 && i > minLine && line.includes("}")) {
                 expandedEnd = Math.min(i + 2, lines.length);
                 break;
             }
         }
         // For Python, use indentation
-        else if (ext === 'py') {
-            if (line.trim() && baseIndent !== -1 && line.search(/\S/) <= baseIndent && i > minLine) {
+        else if (ext === "py") {
+            if (line.trim() &&
+                baseIndent !== -1 &&
+                line.search(/\S/) <= baseIndent &&
+                i > minLine) {
                 expandedEnd = i;
                 break;
             }
@@ -446,22 +526,22 @@ const expandToFunctionBoundaries = (lines, minLine, maxLine, filename) => {
 };
 // Get enhanced contextual content (±150 lines with function boundaries)
 const getContextualContent = async (file, octokit, context, sha) => {
-    if (file.status === 'removed' || !file.patch) {
+    if (file.status === "removed" || !file.patch) {
         return undefined;
     }
     try {
         const fullContent = await (0, github_api_1.getFileContent)(octokit, context, file.filename, sha);
         if (!fullContent)
             return undefined;
-        const lines = fullContent.split('\n');
+        const lines = fullContent.split("\n");
         const ranges = extractLineNumbers(file.patch);
         if (ranges.length === 0)
             return undefined;
         // Enhanced contextual content: ±150 lines with function boundaries
-        const minLine = Math.max(1, Math.min(...ranges.map(r => r.start)) - 150);
-        const maxLine = Math.min(lines.length, Math.max(...ranges.map(r => r.end)) + 150);
+        const minLine = Math.max(1, Math.min(...ranges.map((r) => r.start)) - constants_1.REVIEW_CONSTANTS.CONTEXT_LINES);
+        const maxLine = Math.min(lines.length, Math.max(...ranges.map((r) => r.end)) + constants_1.REVIEW_CONSTANTS.CONTEXT_LINES);
         // For small files (<300 lines), include the entire file
-        if (lines.length <= 300) {
+        if (lines.length <= constants_1.REVIEW_CONSTANTS.SMALL_FILE_THRESHOLD) {
             return fullContent;
         }
         // Try to include complete function/class boundaries for better context
@@ -469,7 +549,7 @@ const getContextualContent = async (file, octokit, context, sha) => {
         // Extract the contextual lines with line numbers for better reference
         const contextualLines = lines.slice(adjustedRange.start - 1, adjustedRange.end);
         const numberedLines = contextualLines.map((line, index) => `${adjustedRange.start + index}: ${line}`);
-        return numberedLines.join('\n');
+        return numberedLines.join("\n");
     }
     catch (error) {
         console.warn(`Could not get contextual content for ${file.filename}: ${error}`);
@@ -483,11 +563,11 @@ const chunkDiff = async (diff, config, repositoryContext, octokit, context, sha)
         content: "",
         fileChanges: [],
         repositoryContext,
-        contextualContent: {}
+        contextualContent: {},
     };
-    const maxChunkSize = 60000;
+    const maxChunkSize = constants_1.REVIEW_CONSTANTS.MAX_CHUNK_SIZE;
     // Filter out ignored files first
-    const validFiles = diff.filter(file => !(0, exports.shouldIgnoreFile)(file.filename, config));
+    const validFiles = diff.filter((file) => !(0, exports.shouldIgnoreFile)(file.filename, config));
     // Pre-calculate file content with contextual content
     const fileData = [];
     for (const file of validFiles) {
@@ -505,14 +585,15 @@ const chunkDiff = async (diff, config, repositoryContext, octokit, context, sha)
         fileData.push({
             file,
             content,
-            size: content.length
+            size: content.length,
         });
     }
     // Sort files by size (smallest first) to optimize packing
     fileData.sort((a, b) => a.size - b.size);
     for (const { file, content, size } of fileData) {
         // If this is the first file or adding it won't exceed the limit, add to current chunk
-        if (currentChunk.fileChanges.length === 0 || currentChunk.content.length + size <= maxChunkSize) {
+        if (currentChunk.fileChanges.length === 0 ||
+            currentChunk.content.length + size <= maxChunkSize) {
             currentChunk.content += content;
             currentChunk.fileChanges.push(file);
             // Add to contextual content if available
@@ -533,7 +614,7 @@ const chunkDiff = async (diff, config, repositoryContext, octokit, context, sha)
                 content: content,
                 fileChanges: [file],
                 repositoryContext,
-                contextualContent: newContextualContent
+                contextualContent: newContextualContent,
             };
         }
     }
@@ -549,15 +630,15 @@ const processIncrementalDiff = (incrementalDiff, config) => {
     if (incrementalDiff.newCommits.length === 0) {
         return {
             shouldReview: false,
-            message: '🔄 **Incremental Review**: No new commits to review since last review.'
+            message: "🔄 **Incremental Review**: No new commits to review since last review.",
         };
     }
     // Filter out ignored files before counting
-    const filesToReview = incrementalDiff.changedFiles.filter(file => !(0, exports.shouldIgnoreFile)(file.filename, config));
+    const filesToReview = incrementalDiff.changedFiles.filter((file) => !(0, exports.shouldIgnoreFile)(file.filename, config));
     if (filesToReview.length === 0) {
         return {
             shouldReview: false,
-            message: `🔄 **Incremental Review**: ${incrementalDiff.newCommits.length} new commit(s) found, but no file changes to review after applying ignore patterns.`
+            message: `🔄 **Incremental Review**: ${incrementalDiff.newCommits.length} new commit(s) found, but no file changes to review after applying ignore patterns.`,
         };
     }
     const message = incrementalDiff.isIncremental
@@ -565,7 +646,7 @@ const processIncrementalDiff = (incrementalDiff, config) => {
         : `🆕 **Initial Review**: Reviewing ${filesToReview.length} files to review in this PR.`;
     return {
         shouldReview: true,
-        message
+        message,
     };
 };
 exports.processIncrementalDiff = processIncrementalDiff;
@@ -649,77 +730,108 @@ exports.validateSecurity = validateSecurity;
 "use strict";
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.callAIProvider = exports.callOpenRouter = exports.callAnthropic = void 0;
+exports.callAIProvider = exports.callOpenRouter = exports.callAnthropic = exports.callWithRetry = void 0;
 const types_1 = __nccwpck_require__(6118);
 const credential_manager_1 = __nccwpck_require__(2803);
+const constants_1 = __nccwpck_require__(1912);
+// Helper function to determine if an error should be retried
+const shouldRetry = (error) => {
+    if (error instanceof types_1.AIProviderError && error.statusCode) {
+        // Retry on server errors (5xx) and rate limits (429)
+        return error.statusCode >= 500 || error.statusCode === 429;
+    }
+    // Retry on network errors
+    return (error instanceof Error &&
+        (error.message.includes("network") ||
+            error.message.includes("timeout") ||
+            error.message.includes("ECONNRESET")));
+};
+// Generic retry wrapper for API calls
+const callWithRetry = async (apiCall, retries = constants_1.REVIEW_CONSTANTS.MAX_RETRIES) => {
+    try {
+        return await apiCall();
+    }
+    catch (error) {
+        if (retries > 0 && shouldRetry(error)) {
+            await new Promise((resolve) => setTimeout(resolve, constants_1.REVIEW_CONSTANTS.RETRY_DELAY_MS));
+            return (0, exports.callWithRetry)(apiCall, retries - 1);
+        }
+        throw error;
+    }
+};
+exports.callWithRetry = callWithRetry;
 // Effect: Call Anthropic API
 const callAnthropic = async (prompt, model) => {
-    const credentialManager = credential_manager_1.CredentialManager.getInstance();
-    const apiKey = credentialManager.getApiKey('anthropic');
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            "x-api-key": apiKey,
-            "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-            model,
-            max_tokens: 4000,
-            messages: [{ role: "user", content: prompt }],
-        }),
+    return (0, exports.callWithRetry)(async () => {
+        const credentialManager = credential_manager_1.CredentialManager.getInstance();
+        const apiKey = credentialManager.getApiKey("anthropic");
+        const response = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "x-api-key": apiKey,
+                "anthropic-version": "2023-06-01",
+            },
+            body: JSON.stringify({
+                model,
+                max_tokens: constants_1.REVIEW_CONSTANTS.MAX_TOKENS,
+                messages: [{ role: "user", content: prompt }],
+            }),
+        });
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new types_1.AIProviderError(`Anthropic API error: ${errorText}`, response.status);
+        }
+        const data = await response.json();
+        return {
+            content: data.content[0].text,
+            usage: {
+                input_tokens: data.usage.input_tokens,
+                output_tokens: data.usage.output_tokens,
+            },
+        };
     });
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new types_1.AIProviderError(`Anthropic API error: ${errorText}`, response.status);
-    }
-    const data = await response.json();
-    return {
-        content: data.content[0].text,
-        usage: {
-            input_tokens: data.usage.input_tokens,
-            output_tokens: data.usage.output_tokens,
-        },
-    };
 };
 exports.callAnthropic = callAnthropic;
 // Effect: Call OpenRouter API
 const callOpenRouter = async (prompt, model) => {
-    const credentialManager = credential_manager_1.CredentialManager.getInstance();
-    const apiKey = credentialManager.getApiKey('openrouter');
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-            "HTTP-Referer": "https://github.com/gundurraga/bad-buggy",
-            "X-Title": "Bad Buggy Code Reviewer",
-        },
-        body: JSON.stringify({
-            model,
-            messages: [{ role: "user", content: prompt }],
-            max_tokens: 4000,
-            usage: {
-                include: true, // Enable OpenRouter usage accounting
+    return (0, exports.callWithRetry)(async () => {
+        const credentialManager = credential_manager_1.CredentialManager.getInstance();
+        const apiKey = credentialManager.getApiKey("openrouter");
+        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${apiKey}`,
+                "HTTP-Referer": "https://github.com/gundurraga/bad-buggy",
+                "X-Title": "Bad Buggy Code Reviewer",
             },
-        }),
+            body: JSON.stringify({
+                model,
+                messages: [{ role: "user", content: prompt }],
+                max_tokens: constants_1.REVIEW_CONSTANTS.MAX_TOKENS,
+                usage: {
+                    include: true, // Enable OpenRouter usage accounting
+                },
+            }),
+        });
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new types_1.AIProviderError(`OpenRouter API error: ${response.status} - ${errorText}`);
+        }
+        const data = (await response.json());
+        return {
+            content: data.choices[0].message.content,
+            usage: {
+                input_tokens: data.usage.prompt_tokens,
+                output_tokens: data.usage.completion_tokens,
+                cost: data.usage.cost,
+                cost_details: data.usage.cost_details,
+                cached_tokens: data.usage.prompt_tokens_details?.cached_tokens,
+                reasoning_tokens: data.usage.completion_tokens_details?.reasoning_tokens,
+            },
+        };
     });
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new types_1.AIProviderError(`OpenRouter API error: ${response.status} - ${errorText}`);
-    }
-    const data = (await response.json());
-    return {
-        content: data.choices[0].message.content,
-        usage: {
-            input_tokens: data.usage.prompt_tokens,
-            output_tokens: data.usage.completion_tokens,
-            cost: data.usage.cost,
-            cost_details: data.usage.cost_details,
-            cached_tokens: data.usage.prompt_tokens_details?.cached_tokens,
-            reasoning_tokens: data.usage.completion_tokens_details?.reasoning_tokens,
-        },
-    };
 };
 exports.callOpenRouter = callOpenRouter;
 // Effect: Route to appropriate AI provider
@@ -731,7 +843,7 @@ const callAIProvider = async (provider, prompt, model) => {
             case "openrouter":
                 return await (0, exports.callOpenRouter)(prompt, model);
             default:
-                throw new types_1.AIProviderError(`Unsupported AI provider: ${provider}`);
+                throw new types_1.AIProviderError(`${constants_1.ERROR_MESSAGES.UNSUPPORTED_PROVIDER}: ${provider}`);
         }
     }
     catch (error) {
@@ -849,6 +961,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.getRepositoryContext = exports.getExistingReviewComments = exports.getPackageInfo = exports.getFileContent = exports.getRepositoryStructure = exports.getIncrementalDiff = exports.saveReviewState = exports.getReviewState = exports.getPRCommits = exports.postReview = exports.checkUserPermissions = exports.getPRDiff = void 0;
 const logger_1 = __nccwpck_require__(9741);
+const constants_1 = __nccwpck_require__(1912);
 const path = __importStar(__nccwpck_require__(1017));
 // Effect: Get PR diff from GitHub API
 const getPRDiff = async (octokit, context, pr) => {
@@ -856,7 +969,7 @@ const getPRDiff = async (octokit, context, pr) => {
         owner: context.repo.owner,
         repo: context.repo.repo,
         pull_number: pr.number,
-        per_page: 100,
+        per_page: constants_1.REVIEW_CONSTANTS.MAX_FILES_PER_REQUEST,
     });
     return files.map((file) => ({
         filename: file.filename,
@@ -890,23 +1003,30 @@ const getValidLinesFromPatch = (patch) => {
     if (!patch)
         return validLines;
     const lines = patch.split("\n");
-    let currentLine = 0;
+    let currentNewLine = 0;
+    let inHunk = false;
     for (const line of lines) {
         // Parse hunk headers like @@ -1,4 +1,6 @@
         const hunkMatch = line.match(/^@@ -\d+,?\d* \+(\d+),?\d* @@/);
         if (hunkMatch) {
-            currentLine = parseInt(hunkMatch[1], 10);
+            currentNewLine = parseInt(hunkMatch[1], 10);
+            inHunk = true;
             continue;
         }
-        // Skip context lines (start with space) and deleted lines (start with -)
+        if (!inHunk)
+            continue;
+        // Only add lines that exist in the NEW version of the file
         if (line.startsWith(" ") || line.startsWith("+")) {
-            if (currentLine > 0) {
-                validLines.add(currentLine);
+            // Context lines (space) and added lines (+) are valid for comments
+            if (currentNewLine > 0) {
+                validLines.add(currentNewLine);
             }
+            currentNewLine++;
         }
-        // Increment line number for context and added lines
-        if (line.startsWith(" ") || line.startsWith("+")) {
-            currentLine++;
+        else if (line.startsWith("-")) {
+            // Deleted lines don't increment the new line counter
+            // and are not valid for comments
+            continue;
         }
     }
     return validLines;
@@ -923,9 +1043,9 @@ const validateCommentsAgainstDiff = (comments, fileChanges) => {
     // Filter comments to only include those on valid lines
     return comments.filter((comment) => {
         // File-level comments don't need line validation
-        if (comment.line === undefined || comment.commentType === 'file') {
+        if (comment.line === undefined || comment.commentType === "file") {
             // Just check if the file exists in the changes
-            return fileChanges.some(file => file.filename === comment.path);
+            return fileChanges.some((file) => file.filename === comment.path);
         }
         // Diff comments need line validation
         const validLines = fileValidLines.get(comment.path);
@@ -1010,7 +1130,7 @@ const getPRCommits = async (octokit, context, pr) => {
         owner: context.repo.owner,
         repo: context.repo.repo,
         pull_number: pr.number,
-        per_page: 100,
+        per_page: constants_1.REVIEW_CONSTANTS.MAX_FILES_PER_REQUEST,
     });
     return commits.map((commit) => commit.sha);
 };
@@ -1222,7 +1342,7 @@ const getExistingReviewComments = async (octokit, context, pr) => {
             repo: context.repo.repo,
             pull_number: pr.number,
         });
-        // Get general issue comments  
+        // Get general issue comments
         const { data: issueComments } = await octokit.rest.issues.listComments({
             owner: context.repo.owner,
             repo: context.repo.repo,
@@ -1230,19 +1350,19 @@ const getExistingReviewComments = async (octokit, context, pr) => {
         });
         // Combine and filter AI review comments, excluding state tracking comments
         const existingComments = [];
-        reviewComments.forEach(comment => {
-            if (comment.user?.login === 'github-actions[bot]' &&
-                !comment.body?.includes('BAD_BUGGY_REVIEW_STATE')) {
-                existingComments.push(comment.body || '');
+        reviewComments.forEach((comment) => {
+            if (comment.user?.login === "github-actions[bot]" &&
+                !comment.body?.includes("BAD_BUGGY_REVIEW_STATE")) {
+                existingComments.push(comment.body || "");
             }
         });
-        issueComments.forEach(comment => {
-            if (comment.user?.login === 'github-actions[bot]' &&
-                !comment.body?.includes('BAD_BUGGY_REVIEW_STATE')) {
-                existingComments.push(comment.body || '');
+        issueComments.forEach((comment) => {
+            if (comment.user?.login === "github-actions[bot]" &&
+                !comment.body?.includes("BAD_BUGGY_REVIEW_STATE")) {
+                existingComments.push(comment.body || "");
             }
         });
-        return existingComments.filter(comment => comment.trim().length > 0);
+        return existingComments.filter((comment) => comment.trim().length > 0);
     }
     catch (error) {
         logger_1.Logger.error(`Failed to get existing review comments: ${error}`);
@@ -1442,6 +1562,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.CredentialManager = void 0;
 const core = __importStar(__nccwpck_require__(2186));
+const constants_1 = __nccwpck_require__(1912);
 /**
  * Secure credential management service
  * Handles API key validation, access control, and secure storage
@@ -1466,7 +1587,7 @@ class CredentialManager {
         this.logAccess(provider, "retrieve");
         const key = this.credentials.get(provider) || this.getFromEnvironment(provider);
         if (!key) {
-            throw new Error(`❌ API key not found for provider: ${provider}\n\n` +
+            throw new Error(`❌ ${constants_1.ERROR_MESSAGES.NO_API_KEY}: ${provider}\n\n` +
                 `🔧 Fix: Add your API key as a repository secret:\n` +
                 `1. Go to Settings → Secrets and variables → Actions\n` +
                 `2. Add: ${this.getExpectedSecretName(provider)}\n` +
@@ -1474,7 +1595,7 @@ class CredentialManager {
                 `💡 Make sure the secret name matches exactly (case-sensitive)`);
         }
         if (!this.validateApiKey(key, provider)) {
-            throw new Error(`❌ Invalid API key format for provider: ${provider}\n\n` +
+            throw new Error(`❌ ${constants_1.ERROR_MESSAGES.INVALID_API_KEY_FORMAT}: ${provider}\n\n` +
                 `Expected format: ${this.getExpectedFormat(provider)}\n` +
                 `Received format: ${key.substring(0, 10)}...\n\n` +
                 `🔧 Fix: Get a valid API key from: ${this.getProviderUrl(provider)}`);
@@ -1488,7 +1609,7 @@ class CredentialManager {
      */
     setApiKey(provider, apiKey) {
         if (!this.validateApiKey(apiKey, provider)) {
-            throw new Error(`❌ Invalid API key format for provider: ${provider}\n\n` +
+            throw new Error(`❌ ${constants_1.ERROR_MESSAGES.INVALID_API_KEY_FORMAT}: ${provider}\n\n` +
                 `Expected format: ${this.getExpectedFormat(provider)}\n` +
                 `🔧 Fix: Get a valid API key from: ${this.getProviderUrl(provider)}`);
         }
@@ -1508,11 +1629,11 @@ class CredentialManager {
         // Provider-specific validation
         switch (provider.toLowerCase()) {
             case "anthropic":
-                return apiKey.startsWith("sk-ant-") && apiKey.length > 20;
+                return (apiKey.startsWith("sk-ant-") &&
+                    apiKey.length > constants_1.REVIEW_CONSTANTS.MIN_API_KEY_LENGTH);
             case "openrouter":
-                return apiKey.startsWith("sk-or-") && apiKey.length > 20;
-            case "openai":
-                return apiKey.startsWith("sk-") && apiKey.length > 20;
+                return (apiKey.startsWith("sk-or-") &&
+                    apiKey.length > constants_1.REVIEW_CONSTANTS.MIN_API_KEY_LENGTH);
             default:
                 // Generic validation for unknown providers
                 return apiKey.length > 10;
@@ -1525,9 +1646,8 @@ class CredentialManager {
      */
     getFromEnvironment(provider) {
         const envVarNames = {
-            anthropic: ["ANTHROPIC_API_KEY", "CLAUDE_API_KEY"],
-            openrouter: ["OPENROUTER_API_KEY", "OR_API_KEY"],
-            openai: ["OPENAI_API_KEY"],
+            anthropic: ["ANTHROPIC_API_KEY"],
+            openrouter: ["OPENROUTER_API_KEY"],
         };
         const possibleNames = envVarNames[provider.toLowerCase()] || [`${provider.toUpperCase()}_API_KEY`];
         for (const envVar of possibleNames) {
@@ -1550,9 +1670,9 @@ class CredentialManager {
             timestamp: new Date(),
             action,
         });
-        // Keep only last 100 entries to prevent memory leaks
-        if (this.accessLog.length > 100) {
-            this.accessLog = this.accessLog.slice(-100);
+        // Keep only last entries to prevent memory leaks
+        if (this.accessLog.length > constants_1.REVIEW_CONSTANTS.MAX_ACCESS_LOG_ENTRIES) {
+            this.accessLog = this.accessLog.slice(-constants_1.REVIEW_CONSTANTS.MAX_ACCESS_LOG_ENTRIES);
         }
         core.debug(`Credential access: ${provider} - ${action}`);
     }
@@ -1585,12 +1705,11 @@ class CredentialManager {
      */
     getExpectedSecretName(provider) {
         const secretNames = {
-            anthropic: 'ANTHROPIC_API_KEY',
-            openrouter: 'OPENROUTER_API_KEY',
-            openai: 'OPENAI_API_KEY'
+            anthropic: "ANTHROPIC_API_KEY",
+            openrouter: "OPENROUTER_API_KEY",
         };
-        return secretNames[provider.toLowerCase()] ||
-            `${provider.toUpperCase()}_API_KEY`;
+        return (secretNames[provider.toLowerCase()] ||
+            `${provider.toUpperCase()}_API_KEY`);
     }
     /**
      * Get provider URL for getting API keys
@@ -1598,13 +1717,8 @@ class CredentialManager {
      * @returns URL where users can get API keys
      */
     getProviderUrl(provider) {
-        const urls = {
-            anthropic: 'https://console.anthropic.com/settings/keys',
-            openrouter: 'https://openrouter.ai/settings/keys',
-            openai: 'https://platform.openai.com/api-keys'
-        };
-        return urls[provider.toLowerCase()] ||
-            `https://${provider.toLowerCase()}.com`;
+        return (constants_1.PROVIDER_URLS[provider.toLowerCase()] ||
+            `https://${provider.toLowerCase()}.com`);
     }
     /**
      * Get expected API key format for provider
@@ -1612,13 +1726,7 @@ class CredentialManager {
      * @returns Expected format description
      */
     getExpectedFormat(provider) {
-        const formats = {
-            anthropic: 'sk-ant-... (starts with sk-ant-)',
-            openrouter: 'sk-or-... (starts with sk-or-)',
-            openai: 'sk-... (starts with sk-)'
-        };
-        return formats[provider.toLowerCase()] ||
-            'Valid API key format';
+        return (constants_1.PROVIDER_FORMATS[provider.toLowerCase()] || "Valid API key format");
     }
 }
 exports.CredentialManager = CredentialManager;
@@ -2360,46 +2468,21 @@ const credential_manager_1 = __nccwpck_require__(2803);
 class PricingService {
     constructor(provider) {
         this.provider = provider;
-        this.cache = {};
-        this.CACHE_TTL = 3600000; // 1 hour in milliseconds
         this.credentialManager = credential_manager_1.CredentialManager.getInstance();
     }
-    // Get model pricing with caching
+    // Get model pricing
     async getModelPricing(model) {
-        const cacheKey = `${this.provider}:${model}`;
-        const cached = this.cache[cacheKey];
-        if (cached && Date.now() - cached.timestamp < cached.ttl) {
-            return cached.pricing;
+        if (this.provider === "anthropic") {
+            return await this.fetchAnthropicPricing(model);
         }
-        let pricing;
-        try {
-            if (this.provider === "anthropic") {
-                pricing = await this.fetchAnthropicPricing(model);
-            }
-            else {
-                pricing = await this.fetchOpenRouterPricing(model);
-            }
-            // Cache the result
-            this.cache[cacheKey] = {
-                pricing,
-                timestamp: Date.now(),
-                ttl: this.CACHE_TTL,
-            };
-            return pricing;
-        }
-        catch (error) {
-            // If fetching fails, try to use cached data even if expired
-            if (cached) {
-                console.warn(`Using expired pricing data for ${model}: ${error}`);
-                return cached.pricing;
-            }
-            throw error;
+        else {
+            return await this.fetchOpenRouterPricing(model);
         }
     }
     // Fetch Anthropic model pricing
     async fetchAnthropicPricing(model) {
         try {
-            const apiKey = this.credentialManager.getApiKey('anthropic');
+            const apiKey = this.credentialManager.getApiKey("anthropic");
             // Try to get pricing from Anthropic's models API
             const response = await fetch("https://api.anthropic.com/v1/models", {
                 headers: {
@@ -2429,7 +2512,7 @@ class PricingService {
     // Fetch OpenRouter model pricing
     async fetchOpenRouterPricing(model) {
         try {
-            const apiKey = this.credentialManager.getApiKey('openrouter');
+            const apiKey = this.credentialManager.getApiKey("openrouter");
             const response = await fetch("https://openrouter.ai/api/v1/models", {
                 headers: {
                     Authorization: `Bearer ${apiKey}`,
@@ -2488,16 +2571,6 @@ class PricingService {
             outputCost,
             totalCost: usageWithCost.cost || inputCost + outputCost,
         };
-    }
-    // Clear expired cache entries
-    clearExpiredCache() {
-        const now = Date.now();
-        Object.keys(this.cache).forEach((key) => {
-            const entry = this.cache[key];
-            if (now - entry.timestamp >= entry.ttl) {
-                delete this.cache[key];
-            }
-        });
     }
 }
 exports.PricingService = PricingService;

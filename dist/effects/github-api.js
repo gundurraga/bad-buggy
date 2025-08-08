@@ -35,6 +35,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getRepositoryContext = exports.getExistingReviewComments = exports.getPackageInfo = exports.getFileContent = exports.getRepositoryStructure = exports.getIncrementalDiff = exports.saveReviewState = exports.getReviewState = exports.getPRCommits = exports.postReview = exports.checkUserPermissions = exports.getPRDiff = void 0;
 const logger_1 = require("../services/logger");
+const constants_1 = require("../constants");
 const path = __importStar(require("path"));
 // Effect: Get PR diff from GitHub API
 const getPRDiff = async (octokit, context, pr) => {
@@ -42,7 +43,7 @@ const getPRDiff = async (octokit, context, pr) => {
         owner: context.repo.owner,
         repo: context.repo.repo,
         pull_number: pr.number,
-        per_page: 100,
+        per_page: constants_1.REVIEW_CONSTANTS.MAX_FILES_PER_REQUEST,
     });
     return files.map((file) => ({
         filename: file.filename,
@@ -76,23 +77,30 @@ const getValidLinesFromPatch = (patch) => {
     if (!patch)
         return validLines;
     const lines = patch.split("\n");
-    let currentLine = 0;
+    let currentNewLine = 0;
+    let inHunk = false;
     for (const line of lines) {
         // Parse hunk headers like @@ -1,4 +1,6 @@
         const hunkMatch = line.match(/^@@ -\d+,?\d* \+(\d+),?\d* @@/);
         if (hunkMatch) {
-            currentLine = parseInt(hunkMatch[1], 10);
+            currentNewLine = parseInt(hunkMatch[1], 10);
+            inHunk = true;
             continue;
         }
-        // Skip context lines (start with space) and deleted lines (start with -)
+        if (!inHunk)
+            continue;
+        // Only add lines that exist in the NEW version of the file
         if (line.startsWith(" ") || line.startsWith("+")) {
-            if (currentLine > 0) {
-                validLines.add(currentLine);
+            // Context lines (space) and added lines (+) are valid for comments
+            if (currentNewLine > 0) {
+                validLines.add(currentNewLine);
             }
+            currentNewLine++;
         }
-        // Increment line number for context and added lines
-        if (line.startsWith(" ") || line.startsWith("+")) {
-            currentLine++;
+        else if (line.startsWith("-")) {
+            // Deleted lines don't increment the new line counter
+            // and are not valid for comments
+            continue;
         }
     }
     return validLines;
@@ -109,9 +117,9 @@ const validateCommentsAgainstDiff = (comments, fileChanges) => {
     // Filter comments to only include those on valid lines
     return comments.filter((comment) => {
         // File-level comments don't need line validation
-        if (comment.line === undefined || comment.commentType === 'file') {
+        if (comment.line === undefined || comment.commentType === "file") {
             // Just check if the file exists in the changes
-            return fileChanges.some(file => file.filename === comment.path);
+            return fileChanges.some((file) => file.filename === comment.path);
         }
         // Diff comments need line validation
         const validLines = fileValidLines.get(comment.path);
@@ -196,7 +204,7 @@ const getPRCommits = async (octokit, context, pr) => {
         owner: context.repo.owner,
         repo: context.repo.repo,
         pull_number: pr.number,
-        per_page: 100,
+        per_page: constants_1.REVIEW_CONSTANTS.MAX_FILES_PER_REQUEST,
     });
     return commits.map((commit) => commit.sha);
 };
@@ -408,7 +416,7 @@ const getExistingReviewComments = async (octokit, context, pr) => {
             repo: context.repo.repo,
             pull_number: pr.number,
         });
-        // Get general issue comments  
+        // Get general issue comments
         const { data: issueComments } = await octokit.rest.issues.listComments({
             owner: context.repo.owner,
             repo: context.repo.repo,
@@ -416,19 +424,19 @@ const getExistingReviewComments = async (octokit, context, pr) => {
         });
         // Combine and filter AI review comments, excluding state tracking comments
         const existingComments = [];
-        reviewComments.forEach(comment => {
-            if (comment.user?.login === 'github-actions[bot]' &&
-                !comment.body?.includes('BAD_BUGGY_REVIEW_STATE')) {
-                existingComments.push(comment.body || '');
+        reviewComments.forEach((comment) => {
+            if (comment.user?.login === "github-actions[bot]" &&
+                !comment.body?.includes("BAD_BUGGY_REVIEW_STATE")) {
+                existingComments.push(comment.body || "");
             }
         });
-        issueComments.forEach(comment => {
-            if (comment.user?.login === 'github-actions[bot]' &&
-                !comment.body?.includes('BAD_BUGGY_REVIEW_STATE')) {
-                existingComments.push(comment.body || '');
+        issueComments.forEach((comment) => {
+            if (comment.user?.login === "github-actions[bot]" &&
+                !comment.body?.includes("BAD_BUGGY_REVIEW_STATE")) {
+                existingComments.push(comment.body || "");
             }
         });
-        return existingComments.filter(comment => comment.trim().length > 0);
+        return existingComments.filter((comment) => comment.trim().length > 0);
     }
     catch (error) {
         logger_1.Logger.error(`Failed to get existing review comments: ${error}`);

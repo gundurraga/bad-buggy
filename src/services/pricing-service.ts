@@ -1,8 +1,4 @@
-import {
-  AIProviderError,
-  CostCalculation,
-  TokenUsage,
-} from "../types";
+import { AIProviderError, CostCalculation, TokenUsage } from "../types";
 import { CredentialManager } from "../security/credential-manager";
 
 // Internal pricing interface for service calculations
@@ -17,7 +13,7 @@ export type ModelInfo = {
   name: string;
   pricing: ModelPricing;
   provider: string;
-}
+};
 
 export type UsageWithCost = {
   input_tokens: number;
@@ -26,7 +22,7 @@ export type UsageWithCost = {
   cost_details?: {
     upstream_inference_cost?: number;
   };
-}
+};
 
 // API response interfaces
 type AnthropicModel = {
@@ -53,64 +49,27 @@ type OpenRouterModelsResponse = {
   data?: OpenRouterModel[];
 };
 
-export type PricingCache = {
-  [modelId: string]: {
-    pricing: ModelPricing;
-    timestamp: number;
-    ttl: number;
-  };
-}
-
 // Pricing Service for dynamic pricing and cost calculation
 export class PricingService {
-  private cache: PricingCache = {};
-  private readonly CACHE_TTL = 3600000; // 1 hour in milliseconds
   private credentialManager: CredentialManager;
 
   constructor(private provider: "anthropic" | "openrouter") {
     this.credentialManager = CredentialManager.getInstance();
   }
 
-  // Get model pricing with caching
+  // Get model pricing
   async getModelPricing(model: string): Promise<ModelPricing> {
-    const cacheKey = `${this.provider}:${model}`;
-    const cached = this.cache[cacheKey];
-
-    if (cached && Date.now() - cached.timestamp < cached.ttl) {
-      return cached.pricing;
-    }
-
-    let pricing: ModelPricing;
-
-    try {
-      if (this.provider === "anthropic") {
-        pricing = await this.fetchAnthropicPricing(model);
-      } else {
-        pricing = await this.fetchOpenRouterPricing(model);
-      }
-
-      // Cache the result
-      this.cache[cacheKey] = {
-        pricing,
-        timestamp: Date.now(),
-        ttl: this.CACHE_TTL,
-      };
-
-      return pricing;
-    } catch (error) {
-      // If fetching fails, try to use cached data even if expired
-      if (cached) {
-        console.warn(`Using expired pricing data for ${model}: ${error}`);
-        return cached.pricing;
-      }
-      throw error;
+    if (this.provider === "anthropic") {
+      return await this.fetchAnthropicPricing(model);
+    } else {
+      return await this.fetchOpenRouterPricing(model);
     }
   }
 
   // Fetch Anthropic model pricing
   private async fetchAnthropicPricing(model: string): Promise<ModelPricing> {
     try {
-      const apiKey = this.credentialManager.getApiKey('anthropic');
+      const apiKey = this.credentialManager.getApiKey("anthropic");
       // Try to get pricing from Anthropic's models API
       const response = await fetch("https://api.anthropic.com/v1/models", {
         headers: {
@@ -139,14 +98,14 @@ export class PricingService {
     // as prices change frequently. User should check their provider's pricing page.
     throw new AIProviderError(
       `Unable to fetch real-time pricing for model: ${model}. ` +
-      `Please check https://www.anthropic.com/pricing for current rates.`
+        `Please check https://www.anthropic.com/pricing for current rates.`
     );
   }
 
   // Fetch OpenRouter model pricing
   private async fetchOpenRouterPricing(model: string): Promise<ModelPricing> {
     try {
-      const apiKey = this.credentialManager.getApiKey('openrouter');
+      const apiKey = this.credentialManager.getApiKey("openrouter");
       const response = await fetch("https://openrouter.ai/api/v1/models", {
         headers: {
           Authorization: `Bearer ${apiKey}`,
@@ -231,17 +190,6 @@ export class PricingService {
       outputCost,
       totalCost: usageWithCost.cost || inputCost + outputCost,
     };
-  }
-
-  // Clear expired cache entries
-  clearExpiredCache(): void {
-    const now = Date.now();
-    Object.keys(this.cache).forEach((key) => {
-      const entry = this.cache[key];
-      if (now - entry.timestamp >= entry.ttl) {
-        delete this.cache[key];
-      }
-    });
   }
 }
 

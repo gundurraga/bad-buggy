@@ -12,6 +12,7 @@ import {
   PackageInfo,
 } from "../types";
 import { Logger } from "../services/logger";
+import { REVIEW_CONSTANTS } from "../constants";
 import * as path from "path";
 
 // Effect: Get PR diff from GitHub API
@@ -24,7 +25,7 @@ export const getPRDiff = async (
     owner: context.repo.owner,
     repo: context.repo.repo,
     pull_number: pr.number,
-    per_page: 100,
+    per_page: REVIEW_CONSTANTS.MAX_FILES_PER_REQUEST,
   });
 
   return files.map((file) => ({
@@ -63,26 +64,31 @@ const getValidLinesFromPatch = (patch: string): Set<number> => {
   if (!patch) return validLines;
 
   const lines = patch.split("\n");
-  let currentLine = 0;
+  let currentNewLine = 0;
+  let inHunk = false;
 
   for (const line of lines) {
     // Parse hunk headers like @@ -1,4 +1,6 @@
     const hunkMatch = line.match(/^@@ -\d+,?\d* \+(\d+),?\d* @@/);
     if (hunkMatch) {
-      currentLine = parseInt(hunkMatch[1], 10);
+      currentNewLine = parseInt(hunkMatch[1], 10);
+      inHunk = true;
       continue;
     }
 
-    // Skip context lines (start with space) and deleted lines (start with -)
-    if (line.startsWith(" ") || line.startsWith("+")) {
-      if (currentLine > 0) {
-        validLines.add(currentLine);
-      }
-    }
+    if (!inHunk) continue;
 
-    // Increment line number for context and added lines
+    // Only add lines that exist in the NEW version of the file
     if (line.startsWith(" ") || line.startsWith("+")) {
-      currentLine++;
+      // Context lines (space) and added lines (+) are valid for comments
+      if (currentNewLine > 0) {
+        validLines.add(currentNewLine);
+      }
+      currentNewLine++;
+    } else if (line.startsWith("-")) {
+      // Deleted lines don't increment the new line counter
+      // and are not valid for comments
+      continue;
     }
   }
 
@@ -106,11 +112,11 @@ const validateCommentsAgainstDiff = (
   // Filter comments to only include those on valid lines
   return comments.filter((comment) => {
     // File-level comments don't need line validation
-    if (comment.line === undefined || comment.commentType === 'file') {
+    if (comment.line === undefined || comment.commentType === "file") {
       // Just check if the file exists in the changes
-      return fileChanges.some(file => file.filename === comment.path);
+      return fileChanges.some((file) => file.filename === comment.path);
     }
-    
+
     // Diff comments need line validation
     const validLines = fileValidLines.get(comment.path);
     if (!validLines || validLines.size === 0) {
@@ -159,7 +165,7 @@ export const postReview = async (
       path: comment.path,
       body: comment.body,
     };
-    
+
     // Handle multi-line comments (GitHub API format: start_line + line)
     if (comment.start_line !== undefined && comment.line !== undefined) {
       return {
@@ -168,7 +174,7 @@ export const postReview = async (
         line: comment.line, // This is the end line in GitHub's API
       };
     }
-    
+
     // Handle single-line diff comments
     if (comment.line !== undefined) {
       return {
@@ -176,7 +182,7 @@ export const postReview = async (
         line: comment.line,
       };
     }
-    
+
     return baseComment;
   });
 
@@ -223,7 +229,7 @@ export const getPRCommits = async (
     owner: context.repo.owner,
     repo: context.repo.repo,
     pull_number: pr.number,
-    per_page: 100,
+    per_page: REVIEW_CONSTANTS.MAX_FILES_PER_REQUEST,
   });
 
   return commits.map((commit) => commit.sha);
@@ -487,13 +493,14 @@ export const getExistingReviewComments = async (
 ): Promise<string[]> => {
   try {
     // Get review comments (line-specific comments)
-    const { data: reviewComments } = await octokit.rest.pulls.listReviewComments({
-      owner: context.repo.owner,
-      repo: context.repo.repo,
-      pull_number: pr.number,
-    });
+    const { data: reviewComments } =
+      await octokit.rest.pulls.listReviewComments({
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+        pull_number: pr.number,
+      });
 
-    // Get general issue comments  
+    // Get general issue comments
     const { data: issueComments } = await octokit.rest.issues.listComments({
       owner: context.repo.owner,
       repo: context.repo.repo,
@@ -502,22 +509,26 @@ export const getExistingReviewComments = async (
 
     // Combine and filter AI review comments, excluding state tracking comments
     const existingComments: string[] = [];
-    
-    reviewComments.forEach(comment => {
-      if (comment.user?.login === 'github-actions[bot]' && 
-          !comment.body?.includes('BAD_BUGGY_REVIEW_STATE')) {
-        existingComments.push(comment.body || '');
+
+    reviewComments.forEach((comment) => {
+      if (
+        comment.user?.login === "github-actions[bot]" &&
+        !comment.body?.includes("BAD_BUGGY_REVIEW_STATE")
+      ) {
+        existingComments.push(comment.body || "");
       }
     });
 
-    issueComments.forEach(comment => {
-      if (comment.user?.login === 'github-actions[bot]' && 
-          !comment.body?.includes('BAD_BUGGY_REVIEW_STATE')) {
-        existingComments.push(comment.body || '');
+    issueComments.forEach((comment) => {
+      if (
+        comment.user?.login === "github-actions[bot]" &&
+        !comment.body?.includes("BAD_BUGGY_REVIEW_STATE")
+      ) {
+        existingComments.push(comment.body || "");
       }
     });
 
-    return existingComments.filter(comment => comment.trim().length > 0);
+    return existingComments.filter((comment) => comment.trim().length > 0);
   } catch (error) {
     Logger.error(`Failed to get existing review comments: ${error}`);
     return [];

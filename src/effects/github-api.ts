@@ -64,26 +64,31 @@ const getValidLinesFromPatch = (patch: string): Set<number> => {
   if (!patch) return validLines;
 
   const lines = patch.split("\n");
-  let currentLine = 0;
+  let currentNewLine = 0;
+  let inHunk = false;
 
   for (const line of lines) {
     // Parse hunk headers like @@ -1,4 +1,6 @@
     const hunkMatch = line.match(/^@@ -\d+,?\d* \+(\d+),?\d* @@/);
     if (hunkMatch) {
-      currentLine = parseInt(hunkMatch[1], 10);
+      currentNewLine = parseInt(hunkMatch[1], 10);
+      inHunk = true;
       continue;
     }
 
-    // Skip context lines (start with space) and deleted lines (start with -)
-    if (line.startsWith(" ") || line.startsWith("+")) {
-      if (currentLine > 0) {
-        validLines.add(currentLine);
-      }
-    }
+    if (!inHunk) continue;
 
-    // Increment line number for context and added lines
+    // Only add lines that exist in the NEW version of the file
     if (line.startsWith(" ") || line.startsWith("+")) {
-      currentLine++;
+      // Context lines (space) and added lines (+) are valid for comments
+      if (currentNewLine > 0) {
+        validLines.add(currentNewLine);
+      }
+      currentNewLine++;
+    } else if (line.startsWith("-")) {
+      // Deleted lines don't increment the new line counter
+      // and are not valid for comments
+      continue;
     }
   }
 

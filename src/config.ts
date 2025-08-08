@@ -71,9 +71,15 @@ Remember: Transform each review into a mentoring session that builds both immedi
 ✓ []
 ✓ [{"file":"app.js","comment":"Good implementation overall"}]
 
+🚨 CRITICAL LINE VALIDATION RULES:
+- ONLY comment on lines that appear in the diff (marked with + or context lines)
+- NEVER comment on deleted lines (marked with -)
+- NEVER reference line numbers that don't exist in the NEW file version
+- If unsure about line numbers, use file-level comments (no "line" property)
+
 Required JSON properties:
 - "file": exact file path from diff (required)
-- "line": line number (optional)  
+- "line": line number from NEW file version (optional - omit if uncertain)  
 - "comment": your review feedback (required)
 
 ⚠️ FINAL WARNING: Your response must start with '[' as the very first character and end with ']' as the very last character. Nothing else.`,

@@ -5,7 +5,7 @@ on:
     types: [opened, synchronize]
 
 jobs:
-  self-review:
+  bad-buggy:
     runs-on: ubuntu-latest
 
     # Only run on PRs to this repo (not forks)
@@ -23,4 +23,4 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           ai-provider: "openrouter"
           api-key: ${{ secrets.OPENROUTER_API_KEY }}
-          model: "qwen/qwen3-coder"
+          model: "openai/gpt-5"

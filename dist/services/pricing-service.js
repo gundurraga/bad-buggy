@@ -7,46 +7,21 @@ const credential_manager_1 = require("../security/credential-manager");
 class PricingService {
     constructor(provider) {
         this.provider = provider;
-        this.cache = {};
-        this.CACHE_TTL = 3600000; // 1 hour in milliseconds
         this.credentialManager = credential_manager_1.CredentialManager.getInstance();
     }
-    // Get model pricing with caching
+    // Get model pricing
     async getModelPricing(model) {
-        const cacheKey = `${this.provider}:${model}`;
-        const cached = this.cache[cacheKey];
-        if (cached && Date.now() - cached.timestamp < cached.ttl) {
-            return cached.pricing;
+        if (this.provider === "anthropic") {
+            return await this.fetchAnthropicPricing(model);
         }
-        let pricing;
-        try {
-            if (this.provider === "anthropic") {
-                pricing = await this.fetchAnthropicPricing(model);
-            }
-            else {
-                pricing = await this.fetchOpenRouterPricing(model);
-            }
-            // Cache the result
-            this.cache[cacheKey] = {
-                pricing,
-                timestamp: Date.now(),
-                ttl: this.CACHE_TTL,
-            };
-            return pricing;
-        }
-        catch (error) {
-            // If fetching fails, try to use cached data even if expired
-            if (cached) {
-                console.warn(`Using expired pricing data for ${model}: ${error}`);
-                return cached.pricing;
-            }
-            throw error;
+        else {
+            return await this.fetchOpenRouterPricing(model);
         }
     }
     // Fetch Anthropic model pricing
     async fetchAnthropicPricing(model) {
         try {
-            const apiKey = this.credentialManager.getApiKey('anthropic');
+            const apiKey = this.credentialManager.getApiKey("anthropic");
             // Try to get pricing from Anthropic's models API
             const response = await fetch("https://api.anthropic.com/v1/models", {
                 headers: {
@@ -76,7 +51,7 @@ class PricingService {
     // Fetch OpenRouter model pricing
     async fetchOpenRouterPricing(model) {
         try {
-            const apiKey = this.credentialManager.getApiKey('openrouter');
+            const apiKey = this.credentialManager.getApiKey("openrouter");
             const response = await fetch("https://openrouter.ai/api/v1/models", {
                 headers: {
                     Authorization: `Bearer ${apiKey}`,
@@ -135,16 +110,6 @@ class PricingService {
             outputCost,
             totalCost: usageWithCost.cost || inputCost + outputCost,
         };
-    }
-    // Clear expired cache entries
-    clearExpiredCache() {
-        const now = Date.now();
-        Object.keys(this.cache).forEach((key) => {
-            const entry = this.cache[key];
-            if (now - entry.timestamp >= entry.ttl) {
-                delete this.cache[key];
-            }
-        });
     }
 }
 exports.PricingService = PricingService;

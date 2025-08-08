@@ -20,7 +20,7 @@ const shouldRetry = (error: unknown): boolean => {
 // Generic retry wrapper for API calls
 export const callWithRetry = async <T>(
   apiCall: () => Promise<T>,
-  retries = REVIEW_CONSTANTS.MAX_RETRIES
+  retries: number = REVIEW_CONSTANTS.MAX_RETRIES
 ): Promise<T> => {
   try {
     return await apiCall();

@@ -35,6 +35,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CredentialManager = void 0;
 const core = __importStar(require("@actions/core"));
+const constants_1 = require("../constants");
 /**
  * Secure credential management service
  * Handles API key validation, access control, and secure storage
@@ -59,7 +60,7 @@ class CredentialManager {
         this.logAccess(provider, "retrieve");
         const key = this.credentials.get(provider) || this.getFromEnvironment(provider);
         if (!key) {
-            throw new Error(`❌ API key not found for provider: ${provider}\n\n` +
+            throw new Error(`❌ ${constants_1.ERROR_MESSAGES.NO_API_KEY}: ${provider}\n\n` +
                 `🔧 Fix: Add your API key as a repository secret:\n` +
                 `1. Go to Settings → Secrets and variables → Actions\n` +
                 `2. Add: ${this.getExpectedSecretName(provider)}\n` +
@@ -67,7 +68,7 @@ class CredentialManager {
                 `💡 Make sure the secret name matches exactly (case-sensitive)`);
         }
         if (!this.validateApiKey(key, provider)) {
-            throw new Error(`❌ Invalid API key format for provider: ${provider}\n\n` +
+            throw new Error(`❌ ${constants_1.ERROR_MESSAGES.INVALID_API_KEY_FORMAT}: ${provider}\n\n` +
                 `Expected format: ${this.getExpectedFormat(provider)}\n` +
                 `Received format: ${key.substring(0, 10)}...\n\n` +
                 `🔧 Fix: Get a valid API key from: ${this.getProviderUrl(provider)}`);
@@ -81,7 +82,7 @@ class CredentialManager {
      */
     setApiKey(provider, apiKey) {
         if (!this.validateApiKey(apiKey, provider)) {
-            throw new Error(`❌ Invalid API key format for provider: ${provider}\n\n` +
+            throw new Error(`❌ ${constants_1.ERROR_MESSAGES.INVALID_API_KEY_FORMAT}: ${provider}\n\n` +
                 `Expected format: ${this.getExpectedFormat(provider)}\n` +
                 `🔧 Fix: Get a valid API key from: ${this.getProviderUrl(provider)}`);
         }
@@ -101,11 +102,11 @@ class CredentialManager {
         // Provider-specific validation
         switch (provider.toLowerCase()) {
             case "anthropic":
-                return apiKey.startsWith("sk-ant-") && apiKey.length > 20;
+                return (apiKey.startsWith("sk-ant-") &&
+                    apiKey.length > constants_1.REVIEW_CONSTANTS.MIN_API_KEY_LENGTH);
             case "openrouter":
-                return apiKey.startsWith("sk-or-") && apiKey.length > 20;
-            case "openai":
-                return apiKey.startsWith("sk-") && apiKey.length > 20;
+                return (apiKey.startsWith("sk-or-") &&
+                    apiKey.length > constants_1.REVIEW_CONSTANTS.MIN_API_KEY_LENGTH);
             default:
                 // Generic validation for unknown providers
                 return apiKey.length > 10;
@@ -118,9 +119,8 @@ class CredentialManager {
      */
     getFromEnvironment(provider) {
         const envVarNames = {
-            anthropic: ["ANTHROPIC_API_KEY", "CLAUDE_API_KEY"],
-            openrouter: ["OPENROUTER_API_KEY", "OR_API_KEY"],
-            openai: ["OPENAI_API_KEY"],
+            anthropic: ["ANTHROPIC_API_KEY"],
+            openrouter: ["OPENROUTER_API_KEY"],
         };
         const possibleNames = envVarNames[provider.toLowerCase()] || [`${provider.toUpperCase()}_API_KEY`];
         for (const envVar of possibleNames) {
@@ -143,9 +143,9 @@ class CredentialManager {
             timestamp: new Date(),
             action,
         });
-        // Keep only last 100 entries to prevent memory leaks
-        if (this.accessLog.length > 100) {
-            this.accessLog = this.accessLog.slice(-100);
+        // Keep only last entries to prevent memory leaks
+        if (this.accessLog.length > constants_1.REVIEW_CONSTANTS.MAX_ACCESS_LOG_ENTRIES) {
+            this.accessLog = this.accessLog.slice(-constants_1.REVIEW_CONSTANTS.MAX_ACCESS_LOG_ENTRIES);
         }
         core.debug(`Credential access: ${provider} - ${action}`);
     }
@@ -178,12 +178,11 @@ class CredentialManager {
      */
     getExpectedSecretName(provider) {
         const secretNames = {
-            anthropic: 'ANTHROPIC_API_KEY',
-            openrouter: 'OPENROUTER_API_KEY',
-            openai: 'OPENAI_API_KEY'
+            anthropic: "ANTHROPIC_API_KEY",
+            openrouter: "OPENROUTER_API_KEY",
         };
-        return secretNames[provider.toLowerCase()] ||
-            `${provider.toUpperCase()}_API_KEY`;
+        return (secretNames[provider.toLowerCase()] ||
+            `${provider.toUpperCase()}_API_KEY`);
     }
     /**
      * Get provider URL for getting API keys
@@ -191,13 +190,8 @@ class CredentialManager {
      * @returns URL where users can get API keys
      */
     getProviderUrl(provider) {
-        const urls = {
-            anthropic: 'https://console.anthropic.com/settings/keys',
-            openrouter: 'https://openrouter.ai/settings/keys',
-            openai: 'https://platform.openai.com/api-keys'
-        };
-        return urls[provider.toLowerCase()] ||
-            `https://${provider.toLowerCase()}.com`;
+        return (constants_1.PROVIDER_URLS[provider.toLowerCase()] ||
+            `https://${provider.toLowerCase()}.com`);
     }
     /**
      * Get expected API key format for provider
@@ -205,13 +199,7 @@ class CredentialManager {
      * @returns Expected format description
      */
     getExpectedFormat(provider) {
-        const formats = {
-            anthropic: 'sk-ant-... (starts with sk-ant-)',
-            openrouter: 'sk-or-... (starts with sk-or-)',
-            openai: 'sk-... (starts with sk-)'
-        };
-        return formats[provider.toLowerCase()] ||
-            'Valid API key format';
+        return (constants_1.PROVIDER_FORMATS[provider.toLowerCase()] || "Valid API key format");
     }
 }
 exports.CredentialManager = CredentialManager;
